@@ -2,6 +2,7 @@ from typing import List
 from uuid import UUID
 import secrets
 import string
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
@@ -86,6 +87,148 @@ def list_technicians(
         result.append(tech_dict)
     
     return result
+
+
+@router.get("/technicians/{technician_id}/stats")
+def get_technician_stats(
+    technician_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(
+        require_role("Secrétaire DSI", "Adjoint DSI", "DSI", "Admin")
+    ),
+):
+    """Récupère les statistiques détaillées d'un technicien"""
+    technician = db.query(models.User).filter(
+        models.User.id == technician_id,
+        models.User.role.has(models.Role.name == "Technicien")
+    ).first()
+    
+    if not technician:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Technicien not found"
+        )
+    
+    # Tickets résolus
+    resolved_tickets = (
+        db.query(models.Ticket)
+        .filter(
+            models.Ticket.technician_id == technician_id,
+            models.Ticket.status == models.TicketStatus.RESOLU
+        )
+        .all()
+    )
+    
+    # Tickets clôturés
+    closed_tickets = (
+        db.query(models.Ticket)
+        .filter(
+            models.Ticket.technician_id == technician_id,
+            models.Ticket.status == models.TicketStatus.CLOTURE
+        )
+        .all()
+    )
+    
+    # Calculer le temps moyen de résolution (en jours)
+    total_resolution_time = 0
+    resolved_count = 0
+    for ticket in resolved_tickets + closed_tickets:
+        if ticket.assigned_at and ticket.resolved_at:
+            time_diff = (ticket.resolved_at - ticket.assigned_at).total_seconds() / 86400  # Convertir en jours
+            total_resolution_time += time_diff
+            resolved_count += 1
+    
+    avg_resolution_time = round(total_resolution_time / resolved_count, 1) if resolved_count > 0 else 0
+    
+    # Taux de réussite (tickets clôturés / tickets assignés)
+    total_assigned = (
+        db.query(models.Ticket)
+        .filter(models.Ticket.technician_id == technician_id)
+        .count()
+    )
+    
+    success_rate = round((len(closed_tickets) / total_assigned * 100), 1) if total_assigned > 0 else 0
+    
+    # Tickets résolus ce mois
+    first_day_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    resolved_this_month = (
+        db.query(models.Ticket)
+        .filter(
+            models.Ticket.technician_id == technician_id,
+            models.Ticket.status.in_([models.TicketStatus.RESOLU, models.TicketStatus.CLOTURE]),
+            models.Ticket.resolved_at.isnot(None),
+            models.Ticket.resolved_at >= first_day_of_month
+        )
+        .count()
+    )
+    
+    # Déterminer le statut de disponibilité basé sur la charge de travail
+    in_progress_count = (
+        db.query(models.Ticket)
+        .filter(
+            models.Ticket.technician_id == technician_id,
+            models.Ticket.status == models.TicketStatus.EN_COURS
+        )
+        .count()
+    )
+    
+    # Logique simple : disponible si moins de 3 tickets en cours, occupé sinon
+    availability_status = "disponible" if in_progress_count < 3 else "occupé"
+    
+    # Calculer le temps de réponse moyen (temps entre création et première action du technicien)
+    total_response_time = 0
+    response_count = 0
+    for ticket in resolved_tickets + closed_tickets:
+        if ticket.created_at and ticket.assigned_at:
+            time_diff = (ticket.assigned_at - ticket.created_at).total_seconds() / 60  # Convertir en minutes
+            total_response_time += time_diff
+            response_count += 1
+    
+    avg_response_time_minutes = round(total_response_time / response_count, 0) if response_count > 0 else 0
+    
+    # Calculer la charge de travail (basée sur les tickets en cours, max 5)
+    max_workload = 5
+    current_workload = min(in_progress_count, max_workload)
+    workload_ratio = f"{current_workload}/{max_workload}"
+    
+    # Tickets résolus aujourd'hui
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    resolved_today = (
+        db.query(models.Ticket)
+        .filter(
+            models.Ticket.technician_id == technician_id,
+            models.Ticket.status.in_([models.TicketStatus.RESOLU, models.TicketStatus.CLOTURE]),
+            models.Ticket.resolved_at.isnot(None),
+            models.Ticket.resolved_at >= today_start
+        )
+        .count()
+    )
+    
+    # Horaires de travail (par défaut 08h-17h, peut être personnalisé plus tard)
+    work_hours = "08h - 17h"
+    
+    return {
+        "id": str(technician.id),
+        "full_name": technician.full_name,
+        "email": technician.email,
+        "phone": technician.phone,
+        "agency": technician.agency,
+        "specialization": technician.specialization,
+        "status": technician.status,
+        "last_login_at": technician.last_login_at.isoformat() if technician.last_login_at else None,
+        "assigned_tickets_count": total_assigned,
+        "in_progress_tickets_count": in_progress_count,
+        "resolved_tickets_count": len(resolved_tickets),
+        "closed_tickets_count": len(closed_tickets),
+        "resolved_this_month": resolved_this_month,
+        "resolved_today": resolved_today,
+        "avg_resolution_time_days": avg_resolution_time,
+        "avg_response_time_minutes": avg_response_time_minutes,
+        "success_rate": success_rate,
+        "availability_status": availability_status,
+        "workload_ratio": workload_ratio,
+        "work_hours": work_hours
+    }
 
 
 @router.get("/", response_model=List[schemas.UserRead])

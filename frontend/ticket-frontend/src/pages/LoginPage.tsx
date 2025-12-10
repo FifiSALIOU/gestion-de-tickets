@@ -66,67 +66,186 @@ function LoginPage({ onLogin }: LoginPageProps) {
 
   return (
     <div style={{ 
-      maxWidth: 600, 
-      margin: "40px auto", 
-      padding: "32px",
+      minHeight: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "#f5f5f5",
+      padding: "20px"
+    }}>
+      {/* Logo/Titre Systèmes d'Incidents */}
+      <div style={{
+        marginBottom: "40px",
+        textAlign: "center"
+      }}>
+        <div style={{
+          fontSize: "48px",
+          fontWeight: "700",
+          color: "#1e293b",
+          letterSpacing: "-1px",
+          marginBottom: "8px",
+          fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+        }}>
+          SI
+        </div>
+        <div style={{
+          fontSize: "14px",
+          color: "#64748b",
+          fontWeight: "500",
+          letterSpacing: "2px",
+          textTransform: "uppercase"
+        }}>
+          Systèmes d'Incidents
+        </div>
+        {/* Ligne décorative sous le logo */}
+        <div style={{
+          width: "60px",
+          height: "3px",
+          background: "linear-gradient(90deg, #3b82f6, #8b5cf6)",
+          margin: "12px auto 0",
+          borderRadius: "2px"
+        }}></div>
+      </div>
+
+      <div style={{ 
+        maxWidth: 500, 
+        width: "100%"
     }}>
       <div style={{
         background: "white",
-        borderRadius: "8px",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-        padding: "32px",
+          borderRadius: "12px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+          padding: "40px",
         marginBottom: "24px"
       }}>
-        <h1 style={{ marginBottom: "24px", fontSize: "24px", fontWeight: "600" }}>Connexion</h1>
+          <h1 style={{ 
+            marginBottom: "32px", 
+            fontSize: "28px", 
+            fontWeight: "600",
+            color: "#1e293b",
+            textAlign: "center"
+          }}>
+            Connexion à votre compte
+          </h1>
         <form onSubmit={handleSubmit}>
-          <div>
-            <label>Nom d'utilisateur</label>
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ 
+                display: "block", 
+                marginBottom: "8px", 
+                fontSize: "14px", 
+                fontWeight: "500",
+                color: "#374151"
+              }}>
+                Nom d'utilisateur
+              </label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              style={{ marginTop: "4px" }}
+                placeholder="Entrez votre nom d'utilisateur"
+                style={{ 
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  background: "#f9fafb",
+                  transition: "all 0.2s ease",
+                  boxSizing: "border-box"
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#3b82f6";
+                  e.target.style.background = "white";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#d1d5db";
+                  e.target.style.background = "#f9fafb";
+                }}
             />
           </div>
-          <div>
-            <label>Mot de passe</label>
+            <div style={{ marginBottom: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <label style={{ 
+                  fontSize: "14px", 
+                  fontWeight: "500",
+                  color: "#374151"
+                }}>
+                  Mot de passe
+                </label>
+                <a href="#" style={{ 
+                  fontSize: "12px", 
+                  color: "#3b82f6",
+                  textDecoration: "none"
+                }}>
+                  Mot de passe oublié ?
+                </a>
+              </div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              style={{ marginTop: "4px" }}
+                placeholder="Entrez votre mot de passe"
+                style={{ 
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  background: "#f9fafb",
+                  transition: "all 0.2s ease",
+                  boxSizing: "border-box"
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#3b82f6";
+                  e.target.style.background = "white";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#d1d5db";
+                  e.target.style.background = "#f9fafb";
+                }}
             />
           </div>
-          {error && <p style={{ color: "red", marginTop: "8px" }}>{error}</p>}
-          <button type="submit" style={{ marginTop: "8px" }}>Se connecter</button>
-        </form>
-      </div>
-
+            {error && (
       <div style={{
-        background: "white",
+                padding: "12px",
+                background: "#fee2e2",
+                border: "1px solid #fecaca",
         borderRadius: "8px",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-        padding: "24px"
-      }}>
-        <h2 style={{ marginBottom: "16px", fontSize: "18px", fontWeight: "600" }}>Voir les tableaux de bord (Mode démo)</h2>
-        <p style={{ color: "#666", marginBottom: "16px", fontSize: "14px" }}>
-          Clique sur les liens ci-dessous pour voir les différentes interfaces sans te connecter :
-        </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <a href="/dashboard/user" style={{ color: "#646cff", textDecoration: "none", padding: "8px", borderRadius: "4px", background: "#f5f5f5" }}>
-            👤 Tableau de bord Utilisateur
-          </a>
-          <a href="/dashboard/secretary" style={{ color: "#646cff", textDecoration: "none", padding: "8px", borderRadius: "4px", background: "#f5f5f5" }}>
-            📋 Tableau de bord Secrétaire/Adjoint DSI
-          </a>
-          <a href="/dashboard/technician" style={{ color: "#646cff", textDecoration: "none", padding: "8px", borderRadius: "4px", background: "#f5f5f5" }}>
-            🔧 Tableau de bord Technicien
-          </a>
-          <a href="/dashboard/dsi" style={{ color: "#646cff", textDecoration: "none", padding: "8px", borderRadius: "4px", background: "#f5f5f5" }}>
-            👔 Tableau de bord DSI
-          </a>
+                marginBottom: "20px",
+                color: "#991b1b",
+                fontSize: "14px"
+              }}>
+                {error}
+              </div>
+            )}
+            <button 
+              type="submit" 
+              style={{ 
+                width: "100%",
+                padding: "14px",
+                background: "#3b82f6",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "16px",
+                fontWeight: "600",
+                cursor: "pointer",
+                transition: "background 0.2s ease",
+                boxShadow: "0 2px 4px rgba(59, 130, 246, 0.3)"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#2563eb";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "#3b82f6";
+              }}
+            >
+              Se connecter
+            </button>
+          </form>
         </div>
       </div>
     </div>

@@ -54,6 +54,17 @@ interface Technician {
   in_progress_tickets_count?: number;
   agency?: string | null;
   phone?: string | null;
+  resolved_tickets_count?: number;
+  closed_tickets_count?: number;
+  resolved_this_month?: number;
+  resolved_today?: number;
+  avg_resolution_time_days?: number;
+  avg_response_time_minutes?: number;
+  success_rate?: number;
+  availability_status?: string;
+  last_login_at?: string | null;
+  workload_ratio?: string;
+  work_hours?: string;
 }
 
 interface Notification {
@@ -106,6 +117,16 @@ function DSIDashboard({ token }: DSIDashboardProps) {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [usersPerPage] = useState<number>(10);
+  // États pour la section Techniciens
+  const [techSearchQuery, setTechSearchQuery] = useState<string>("");
+  const [techSpecializationFilter, setTechSpecializationFilter] = useState<string>("all");
+  const [selectedTechnicianDetails, setSelectedTechnicianDetails] = useState<Technician | null>(null);
+  const [showTechnicianDetailsModal, setShowTechnicianDetailsModal] = useState<boolean>(false);
+  const [loadingTechnicianStats, setLoadingTechnicianStats] = useState<boolean>(false);
+  const [showEditTechnicianModal, setShowEditTechnicianModal] = useState<boolean>(false);
+  const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState<boolean>(false);
+  const [technicianToDelete, setTechnicianToDelete] = useState<Technician | null>(null);
   const [showAddUserModal, setShowAddUserModal] = useState<boolean>(false);
   const [showEditUserModal, setShowEditUserModal] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -325,7 +346,7 @@ function DSIDashboard({ token }: DSIDashboardProps) {
       { id: 5, date: "22/01 13:30:55", recipient: "support@entreprise.com", template: "Alerte Critique", status: "error", error: "Serveur SMTP non disponible. Vérifiez les paramètres de connexion." }
     ];
   });
-
+  
   // États pour les paramètres de sécurité
   const [securitySettings, setSecuritySettings] = useState(() => {
     const saved = localStorage.getItem("securitySettings");
@@ -901,7 +922,7 @@ function DSIDashboard({ token }: DSIDashboardProps) {
           setMetrics(prev => ({ ...prev, openTickets: openCount }));
         }
 
-        // Charger la liste des techniciens
+        // Charger la liste des techniciens avec leurs stats
         const techRes = await fetch("http://localhost:8000/users/technicians", {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -909,7 +930,26 @@ function DSIDashboard({ token }: DSIDashboardProps) {
         });
         if (techRes.ok) {
           const techData = await techRes.json();
-          setTechnicians(techData);
+          // Charger les stats pour chaque technicien
+          const techsWithStats = await Promise.all(
+            techData.map(async (tech: any) => {
+              try {
+                const statsRes = await fetch(`http://localhost:8000/users/technicians/${tech.id}/stats`, {
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                  },
+                });
+                if (statsRes.ok) {
+                  const stats = await statsRes.json();
+                  return { ...tech, ...stats };
+                }
+              } catch (err) {
+                console.error(`Erreur stats pour ${tech.id}:`, err);
+              }
+              return { ...tech, work_hours: "08h - 17h", workload_ratio: "0/5", resolved_today: 0, avg_response_time_minutes: 0 };
+            })
+          );
+          setTechnicians(techsWithStats);
         }
 
         // Charger les informations de l'utilisateur connecté
@@ -1724,29 +1764,31 @@ function DSIDashboard({ token }: DSIDashboardProps) {
             </div>
           )}
         </div>
-        <div 
-          onClick={() => setActiveSection("technicians")}
-          style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            gap: "12px", 
-            padding: "12px 16px", 
-            cursor: "pointer",
-            color: "white",
-            borderRadius: "4px",
-            background: activeSection === "technicians" ? "rgba(255,255,255,0.1)" : "transparent"
-          }}
-        >
-          <div style={{ width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
+        {userRole !== "Admin" && (
+          <div 
+            onClick={() => setActiveSection("technicians")}
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: "12px", 
+              padding: "12px 16px", 
+              cursor: "pointer",
+              color: "white",
+              borderRadius: "4px",
+              background: activeSection === "technicians" ? "rgba(255,255,255,0.1)" : "transparent"
+            }}
+          >
+            <div style={{ width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </div>
+            <div style={{ flex: 1 }}>Techniciens</div>
           </div>
-          <div style={{ flex: 1 }}>Techniciens</div>
-        </div>
+        )}
         {userRole === "Admin" && (
           <div 
             onClick={() => setActiveSection("users")}
@@ -2274,29 +2316,34 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                 </td>
                 <td style={{ padding: "12px 16px" }}>
                   <span style={{
-                    padding: "4px 8px",
-                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    borderRadius: "20px",
                     fontSize: "12px",
                     fontWeight: "500",
-                    background: t.priority === "critique" ? "#f44336" : t.priority === "haute" ? "#ff9800" : t.priority === "moyenne" ? "#ffc107" : "#9e9e9e",
-                    color: "white"
+                    background: t.priority === "critique" ? "#fee2e2" : t.priority === "haute" ? "#fef3c7" : t.priority === "moyenne" ? "#dbeafe" : "#e5e7eb",
+                    color: t.priority === "critique" ? "#991b1b" : t.priority === "haute" ? "#92400e" : t.priority === "moyenne" ? "#1e40af" : "#374151"
                   }}>
                     {t.priority}
                   </span>
                 </td>
                 <td style={{ padding: "12px 16px" }}>
                   <span style={{
-                    padding: "4px 8px",
-                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    borderRadius: "20px",
                     fontSize: "12px",
                     fontWeight: "500",
-                    background: t.status === "en_attente_analyse" ? "#ffc107" : 
-                               t.status === "assigne_technicien" ? "#007bff" : 
-                               t.status === "en_cours" ? "#ff9800" : 
-                               t.status === "resolu" ? "#28a745" : 
-                               t.status === "cloture" ? "#6c757d" :
-                               t.status === "rejete" ? "#dc3545" : "#e0e0e0",
-                    color: "white",
+                    background: t.status === "en_attente_analyse" ? "#fef3c7" : 
+                               t.status === "assigne_technicien" ? "#dbeafe" : 
+                               t.status === "en_cours" ? "#fed7aa" : 
+                               t.status === "resolu" ? "#e5e7eb" : 
+                               t.status === "cloture" ? "#e5e7eb" :
+                               t.status === "rejete" ? "#fee2e2" : "#e5e7eb",
+                    color: t.status === "en_attente_analyse" ? "#92400e" : 
+                           t.status === "assigne_technicien" ? "#1e40af" : 
+                           t.status === "en_cours" ? "#9a3412" : 
+                           t.status === "resolu" ? "#374151" : 
+                           t.status === "cloture" ? "#374151" :
+                           t.status === "rejete" ? "#991b1b" : "#374151",
                     whiteSpace: "nowrap",
                     display: "inline-block"
                   }}>
@@ -2327,8 +2374,31 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                         </select>
                         <button
                           onClick={() => handleAssign(t.id)}
-                          disabled={loading}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                          disabled={loading || !selectedTechnician}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: loading || !selectedTechnician ? "#e5e7eb" : "#dbeafe", 
+                            color: loading || !selectedTechnician ? "#9ca3af" : "#1e40af", 
+                            border: `1px solid ${loading || !selectedTechnician ? "#d1d5db" : "#93c5fd"}`,
+                            borderRadius: "20px", 
+                            cursor: loading || !selectedTechnician ? "not-allowed" : "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease",
+                            opacity: loading || !selectedTechnician ? 0.6 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading && selectedTechnician) {
+                              e.currentTarget.style.backgroundColor = "#bfdbfe";
+                              e.currentTarget.style.borderColor = "#60a5fa";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!loading && selectedTechnician) {
+                              e.currentTarget.style.backgroundColor = "#dbeafe";
+                              e.currentTarget.style.borderColor = "#93c5fd";
+                            }
+                          }}
                         >
                           Confirmer
                         </button>
@@ -2337,7 +2407,25 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                             setSelectedTicket(null);
                             setSelectedTechnician("");
                           }}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#6c757d", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: "#e5e7eb", 
+                            color: "#374151", 
+                            border: "1px solid #d1d5db",
+                            borderRadius: "20px", 
+                            cursor: "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "#d1d5db";
+                            e.currentTarget.style.borderColor = "#9ca3af";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "#e5e7eb";
+                            e.currentTarget.style.borderColor = "#d1d5db";
+                          }}
                         >
                           Annuler
                         </button>
@@ -2347,14 +2435,60 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                         <button
                           onClick={() => setSelectedTicket(t.id)}
                           disabled={loading}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: "#dbeafe", 
+                            color: "#1e40af", 
+                            border: "1px solid #93c5fd",
+                            borderRadius: "20px", 
+                            cursor: loading ? "not-allowed" : "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease",
+                            opacity: loading ? 0.6 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#bfdbfe";
+                              e.currentTarget.style.borderColor = "#60a5fa";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#dbeafe";
+                              e.currentTarget.style.borderColor = "#93c5fd";
+                            }
+                          }}
                         >
                           Assigner
                         </button>
                         <button
                           onClick={() => handleEscalate(t.id)}
                           disabled={loading}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#ff9800", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: "#fed7aa", 
+                            color: "#9a3412", 
+                            border: "1px solid #fdba74",
+                            borderRadius: "20px", 
+                            cursor: loading ? "not-allowed" : "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease",
+                            opacity: loading ? 0.6 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#fcd34d";
+                              e.currentTarget.style.borderColor = "#f59e0b";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#fed7aa";
+                              e.currentTarget.style.borderColor = "#fdba74";
+                            }
+                          }}
                         >
                           Escalader
                         </button>
@@ -2379,7 +2513,30 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                         <button
                           onClick={() => handleReassign(t.id)}
                           disabled={loading}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#17a2b8", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: "#dbeafe", 
+                            color: "#1e40af", 
+                            border: "1px solid #93c5fd",
+                            borderRadius: "20px", 
+                            cursor: loading ? "not-allowed" : "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease",
+                            opacity: loading ? 0.6 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#bfdbfe";
+                              e.currentTarget.style.borderColor = "#60a5fa";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#dbeafe";
+                              e.currentTarget.style.borderColor = "#93c5fd";
+                            }
+                          }}
                         >
                           Confirmer
                         </button>
@@ -2388,7 +2545,25 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                             setSelectedTicket(null);
                             setSelectedTechnician("");
                           }}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#6c757d", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: "#e5e7eb", 
+                            color: "#374151", 
+                            border: "1px solid #d1d5db",
+                            borderRadius: "20px", 
+                            cursor: "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "#d1d5db";
+                            e.currentTarget.style.borderColor = "#9ca3af";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "#e5e7eb";
+                            e.currentTarget.style.borderColor = "#d1d5db";
+                          }}
                         >
                           Annuler
                         </button>
@@ -2398,14 +2573,60 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                         <button
                           onClick={() => setSelectedTicket(t.id)}
                           disabled={loading}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#17a2b8", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: "#dbeafe", 
+                            color: "#1e40af", 
+                            border: "1px solid #93c5fd",
+                            borderRadius: "20px", 
+                            cursor: loading ? "not-allowed" : "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease",
+                            opacity: loading ? 0.6 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#bfdbfe";
+                              e.currentTarget.style.borderColor = "#60a5fa";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#dbeafe";
+                              e.currentTarget.style.borderColor = "#93c5fd";
+                            }
+                          }}
                         >
                           Réassigner
                         </button>
                         <button
                           onClick={() => handleEscalate(t.id)}
                           disabled={loading}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#ff9800", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: "#fed7aa", 
+                            color: "#9a3412", 
+                            border: "1px solid #fdba74",
+                            borderRadius: "20px", 
+                            cursor: loading ? "not-allowed" : "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease",
+                            opacity: loading ? 0.6 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#fcd34d";
+                              e.currentTarget.style.borderColor = "#f59e0b";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!loading) {
+                              e.currentTarget.style.backgroundColor = "#fed7aa";
+                              e.currentTarget.style.borderColor = "#fdba74";
+                            }
+                          }}
                         >
                           Escalader
                         </button>
@@ -2416,7 +2637,30 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                     <button
                       onClick={() => handleClose(t.id)}
                       disabled={loading}
-                      style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#28a745", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                      style={{ 
+                        fontSize: "12px", 
+                        padding: "6px 12px", 
+                        backgroundColor: "#d1fae5", 
+                        color: "#065f46", 
+                        border: "1px solid #6ee7b7",
+                        borderRadius: "20px", 
+                        cursor: loading ? "not-allowed" : "pointer",
+                        fontWeight: "500",
+                        transition: "all 0.2s ease",
+                        opacity: loading ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!loading) {
+                          e.currentTarget.style.backgroundColor = "#a7f3d0";
+                          e.currentTarget.style.borderColor = "#34d399";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!loading) {
+                          e.currentTarget.style.backgroundColor = "#d1fae5";
+                          e.currentTarget.style.borderColor = "#6ee7b7";
+                        }
+                      }}
                     >
                       Clôturer
                     </button>
@@ -2425,7 +2669,30 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                     <button
                       onClick={() => handleReopenClick(t.id)}
                       disabled={loading}
-                      style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#17a2b8", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                      style={{ 
+                        fontSize: "12px", 
+                        padding: "6px 12px", 
+                        backgroundColor: "#dbeafe", 
+                        color: "#1e40af", 
+                        border: "1px solid #93c5fd",
+                        borderRadius: "20px", 
+                        cursor: loading ? "not-allowed" : "pointer",
+                        fontWeight: "500",
+                        transition: "all 0.2s ease",
+                        opacity: loading ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!loading) {
+                          e.currentTarget.style.backgroundColor = "#bfdbfe";
+                          e.currentTarget.style.borderColor = "#60a5fa";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!loading) {
+                          e.currentTarget.style.backgroundColor = "#dbeafe";
+                          e.currentTarget.style.borderColor = "#93c5fd";
+                        }
+                      }}
                     >
                       Réouvrir
                     </button>
@@ -2480,29 +2747,34 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{
-                            padding: "4px 8px",
-                            borderRadius: "4px",
+                            padding: "6px 12px",
+                            borderRadius: "20px",
                             fontSize: "12px",
                             fontWeight: "500",
-                            background: t.priority === "critique" ? "#f44336" : t.priority === "haute" ? "#ff9800" : t.priority === "moyenne" ? "#ffc107" : "#9e9e9e",
-                            color: "white"
+                            background: t.priority === "critique" ? "#fee2e2" : t.priority === "haute" ? "#fef3c7" : t.priority === "moyenne" ? "#dbeafe" : "#e5e7eb",
+                            color: t.priority === "critique" ? "#991b1b" : t.priority === "haute" ? "#92400e" : t.priority === "moyenne" ? "#1e40af" : "#374151"
                           }}>
                             {t.priority}
                           </span>
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{
-                            padding: "4px 8px",
-                            borderRadius: "4px",
+                            padding: "6px 12px",
+                            borderRadius: "20px",
                             fontSize: "12px",
                             fontWeight: "500",
-                            background: t.status === "en_attente_analyse" ? "#ffc107" : 
-                                       t.status === "assigne_technicien" ? "#007bff" : 
-                                       t.status === "en_cours" ? "#ff9800" : 
-                                       t.status === "resolu" ? "#28a745" : 
-                                       t.status === "cloture" ? "#6c757d" :
-                                       t.status === "rejete" ? "#dc3545" : "#e0e0e0",
-                            color: "white",
+                            background: t.status === "en_attente_analyse" ? "#fef3c7" : 
+                                       t.status === "assigne_technicien" ? "#dbeafe" : 
+                                       t.status === "en_cours" ? "#fed7aa" : 
+                                       t.status === "resolu" ? "#e5e7eb" : 
+                                       t.status === "cloture" ? "#e5e7eb" :
+                                       t.status === "rejete" ? "#fee2e2" : "#e5e7eb",
+                            color: t.status === "en_attente_analyse" ? "#92400e" : 
+                                   t.status === "assigne_technicien" ? "#1e40af" : 
+                                   t.status === "en_cours" ? "#9a3412" : 
+                                   t.status === "resolu" ? "#374151" : 
+                                   t.status === "cloture" ? "#374151" :
+                                   t.status === "rejete" ? "#991b1b" : "#374151",
                             whiteSpace: "nowrap",
                             display: "inline-block"
                           }}>
@@ -2530,36 +2802,123 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                                     </option>
                                   ))}
                                 </select>
-                                <button
-                                  onClick={() => handleAssign(t.id)}
-                                  disabled={loading || !selectedTechnician}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                                >
-                                  Confirmer
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setSelectedTicket(null);
-                                    setSelectedTechnician("");
-                                  }}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#6c757d", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                                >
-                                  Annuler
-                                </button>
+                        <button
+                          onClick={() => handleAssign(t.id)}
+                          disabled={loading || !selectedTechnician}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: loading || !selectedTechnician ? "#e5e7eb" : "#dbeafe", 
+                            color: loading || !selectedTechnician ? "#9ca3af" : "#1e40af", 
+                            border: `1px solid ${loading || !selectedTechnician ? "#d1d5db" : "#93c5fd"}`,
+                            borderRadius: "20px", 
+                            cursor: loading || !selectedTechnician ? "not-allowed" : "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease",
+                            opacity: loading || !selectedTechnician ? 0.6 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading && selectedTechnician) {
+                              e.currentTarget.style.backgroundColor = "#bfdbfe";
+                              e.currentTarget.style.borderColor = "#60a5fa";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!loading && selectedTechnician) {
+                              e.currentTarget.style.backgroundColor = "#dbeafe";
+                              e.currentTarget.style.borderColor = "#93c5fd";
+                            }
+                          }}
+                        >
+                          Confirmer
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedTicket(null);
+                            setSelectedTechnician("");
+                          }}
+                          style={{ 
+                            fontSize: "12px", 
+                            padding: "6px 12px", 
+                            backgroundColor: "#e5e7eb", 
+                            color: "#374151", 
+                            border: "1px solid #d1d5db",
+                            borderRadius: "20px", 
+                            cursor: "pointer",
+                            fontWeight: "500",
+                            transition: "all 0.2s ease"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "#d1d5db";
+                            e.currentTarget.style.borderColor = "#9ca3af";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "#e5e7eb";
+                            e.currentTarget.style.borderColor = "#d1d5db";
+                          }}
+                        >
+                          Annuler
+                        </button>
                               </div>
                             ) : (
                               <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
                                 <button
                                   onClick={() => setSelectedTicket(t.id)}
                                   disabled={loading}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                  style={{ 
+                                    fontSize: "12px", 
+                                    padding: "6px 12px", 
+                                    backgroundColor: "#dbeafe", 
+                                    color: "#1e40af", 
+                                    border: "1px solid #93c5fd",
+                                    borderRadius: "20px", 
+                                    cursor: loading ? "not-allowed" : "pointer",
+                                    fontWeight: "500",
+                                    transition: "all 0.2s ease",
+                                    opacity: loading ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#bfdbfe";
+                                      e.currentTarget.style.borderColor = "#60a5fa";
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#dbeafe";
+                                      e.currentTarget.style.borderColor = "#93c5fd";
+                                    }
+                                  }}
                                 >
                                   Assigner
                                 </button>
                                 <button
                                   onClick={() => handleEscalate(t.id)}
                                   disabled={loading}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#ff9800", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                  style={{ 
+                                    fontSize: "12px", 
+                                    padding: "6px 12px", 
+                                    backgroundColor: "#fed7aa", 
+                                    color: "#9a3412", 
+                                    border: "1px solid #fdba74",
+                                    borderRadius: "20px", 
+                                    cursor: loading ? "not-allowed" : "pointer",
+                                    fontWeight: "500",
+                                    transition: "all 0.2s ease",
+                                    opacity: loading ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#fcd34d";
+                                      e.currentTarget.style.borderColor = "#f59e0b";
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#fed7aa";
+                                      e.currentTarget.style.borderColor = "#fdba74";
+                                    }
+                                  }}
                                 >
                                   Escalader
                                 </button>
@@ -2583,7 +2942,30 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                                 <button
                                   onClick={() => handleReassign(t.id)}
                                   disabled={loading}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#17a2b8", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                  style={{ 
+                                    fontSize: "12px", 
+                                    padding: "6px 12px", 
+                                    backgroundColor: "#dbeafe", 
+                                    color: "#1e40af", 
+                                    border: "1px solid #93c5fd",
+                                    borderRadius: "20px", 
+                                    cursor: loading ? "not-allowed" : "pointer",
+                                    fontWeight: "500",
+                                    transition: "all 0.2s ease",
+                                    opacity: loading ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#bfdbfe";
+                                      e.currentTarget.style.borderColor = "#60a5fa";
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#dbeafe";
+                                      e.currentTarget.style.borderColor = "#93c5fd";
+                                    }
+                                  }}
                                 >
                                   Confirmer
                                 </button>
@@ -2592,7 +2974,25 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                                     setSelectedTicket(null);
                                     setSelectedTechnician("");
                                   }}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#6c757d", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                  style={{ 
+                                    fontSize: "12px", 
+                                    padding: "6px 12px", 
+                                    backgroundColor: "#e5e7eb", 
+                                    color: "#374151", 
+                                    border: "1px solid #d1d5db",
+                                    borderRadius: "20px", 
+                                    cursor: "pointer",
+                                    fontWeight: "500",
+                                    transition: "all 0.2s ease"
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = "#d1d5db";
+                                    e.currentTarget.style.borderColor = "#9ca3af";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = "#e5e7eb";
+                                    e.currentTarget.style.borderColor = "#d1d5db";
+                                  }}
                                 >
                                   Annuler
                                 </button>
@@ -2602,14 +3002,60 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                                 <button
                                   onClick={() => setSelectedTicket(t.id)}
                                   disabled={loading}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#17a2b8", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                  style={{ 
+                                    fontSize: "12px", 
+                                    padding: "6px 12px", 
+                                    backgroundColor: "#dbeafe", 
+                                    color: "#1e40af", 
+                                    border: "1px solid #93c5fd",
+                                    borderRadius: "20px", 
+                                    cursor: loading ? "not-allowed" : "pointer",
+                                    fontWeight: "500",
+                                    transition: "all 0.2s ease",
+                                    opacity: loading ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#bfdbfe";
+                                      e.currentTarget.style.borderColor = "#60a5fa";
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#dbeafe";
+                                      e.currentTarget.style.borderColor = "#93c5fd";
+                                    }
+                                  }}
                                 >
                                   Réassigner
                                 </button>
                                 <button
                                   onClick={() => handleEscalate(t.id)}
                                   disabled={loading}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#ff9800", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                  style={{ 
+                                    fontSize: "12px", 
+                                    padding: "6px 12px", 
+                                    backgroundColor: "#fed7aa", 
+                                    color: "#9a3412", 
+                                    border: "1px solid #fdba74",
+                                    borderRadius: "20px", 
+                                    cursor: loading ? "not-allowed" : "pointer",
+                                    fontWeight: "500",
+                                    transition: "all 0.2s ease",
+                                    opacity: loading ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#fcd34d";
+                                      e.currentTarget.style.borderColor = "#f59e0b";
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#fed7aa";
+                                      e.currentTarget.style.borderColor = "#fdba74";
+                                    }
+                                  }}
                                 >
                                   Escalader
                                 </button>
@@ -2619,7 +3065,30 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                             <button
                               onClick={() => handleClose(t.id)}
                               disabled={loading}
-                              style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#28a745", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                              style={{ 
+                                fontSize: "12px", 
+                                padding: "6px 12px", 
+                                backgroundColor: "#d1fae5", 
+                                color: "#065f46", 
+                                border: "1px solid #6ee7b7",
+                                borderRadius: "20px", 
+                                cursor: loading ? "not-allowed" : "pointer",
+                                fontWeight: "500",
+                                transition: "all 0.2s ease",
+                                opacity: loading ? 0.6 : 1
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!loading) {
+                                  e.currentTarget.style.backgroundColor = "#a7f3d0";
+                                  e.currentTarget.style.borderColor = "#34d399";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!loading) {
+                                  e.currentTarget.style.backgroundColor = "#d1fae5";
+                                  e.currentTarget.style.borderColor = "#6ee7b7";
+                                }
+                              }}
                             >
                               Clôturer
                             </button>
@@ -2627,10 +3096,33 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                             <button
                               onClick={() => handleReopenClick(t.id)}
                               disabled={loading}
-                              style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#17a2b8", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                            >
-                              Réouvrir
-                            </button>
+                              style={{ 
+                                fontSize: "12px", 
+                                padding: "6px 12px", 
+                                backgroundColor: "#dbeafe", 
+                                color: "#1e40af", 
+                                border: "1px solid #93c5fd",
+                                borderRadius: "20px", 
+                                cursor: loading ? "not-allowed" : "pointer",
+                                fontWeight: "500",
+                                transition: "all 0.2s ease",
+                                opacity: loading ? 0.6 : 1
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!loading) {
+                                  e.currentTarget.style.backgroundColor = "#bfdbfe";
+                                  e.currentTarget.style.borderColor = "#60a5fa";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!loading) {
+                                  e.currentTarget.style.backgroundColor = "#dbeafe";
+                                  e.currentTarget.style.borderColor = "#93c5fd";
+                                }
+                              }}
+                              >
+                                Réouvrir
+                              </button>
                           ) : (
                             <span style={{ color: "#999", fontSize: "12px" }}>
                               {t.status === "cloture" ? "Clôturé" : "N/A"}
@@ -4028,54 +4520,1035 @@ function DSIDashboard({ token }: DSIDashboardProps) {
              );
            })()}
 
-           {activeSection === "technicians" && (
-             <div style={{ padding: "24px" }}>
-               <h2 style={{ marginBottom: "24px", fontSize: "28px", fontWeight: "600", color: "#333" }}>Gestion des Techniciens</h2>
+          {activeSection === "technicians" && userRole !== "Admin" && (
+            <div style={{ padding: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+                <h2 style={{ fontSize: "28px", fontWeight: "600", color: "#333", margin: 0 }}>Gestion des Techniciens</h2>
+              </div>
+
+              {/* Barre de recherche et filtres */}
+              <div style={{ 
+                background: "white", 
+                borderRadius: "8px", 
+                padding: "16px", 
+                marginBottom: "20px",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                display: "flex",
+                gap: "12px",
+                alignItems: "center",
+                flexWrap: "wrap"
+              }}>
+                {/* Recherche */}
+                <div style={{ flex: 1, minWidth: "200px" }}>
+                  <input
+                    type="text"
+                    placeholder="Rechercher par nom ou email..."
+                    value={techSearchQuery}
+                    onChange={(e) => setTechSearchQuery(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      fontSize: "14px"
+                    }}
+                  />
+                </div>
+                
+                {/* Filtre par spécialisation */}
+                <div style={{ minWidth: "150px" }}>
+                  <select
+                    value={techSpecializationFilter}
+                    onChange={(e) => setTechSpecializationFilter(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      fontSize: "14px",
+                      background: "white",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <option value="all">Toutes les spécialisations</option>
+                    <option value="materiel">Matériel</option>
+                    <option value="applicatif">Applicatif</option>
+                  </select>
+                </div>
+
+                {/* Bouton pour réinitialiser les filtres */}
+                {(techSearchQuery || techSpecializationFilter !== "all") && (
+                  <button
+                    onClick={() => {
+                      setTechSearchQuery("");
+                      setTechSpecializationFilter("all");
+                    }}
+                    style={{
+                      padding: "8px 16px",
+                      background: "#6c757d",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "14px"
+                    }}
+                  >
+                    Réinitialiser
+                  </button>
+                )}
+              </div>
                
-               {/* Tableau des techniciens */}
-               <div style={{ background: "white", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", overflow: "hidden" }}>
-                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                   <thead>
-                     <tr style={{ background: "#f8f9fa", borderBottom: "1px solid #dee2e6" }}>
-                       <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#666", textTransform: "uppercase" }}>Nom</th>
-                       <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#666", textTransform: "uppercase" }}>Email</th>
-                       <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#666", textTransform: "uppercase" }}>Spécialisation</th>
-                       <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#666", textTransform: "uppercase" }}>Tickets Assignés</th>
-                       <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#666", textTransform: "uppercase" }}>Tickets en cours</th>
-                     </tr>
-                   </thead>
-                   <tbody>
-                     {technicians.length === 0 ? (
-                       <tr>
-                         <td colSpan={5} style={{ textAlign: "center", padding: "20px", color: "#999" }}>
-                           Aucun technicien trouvé
-                         </td>
-                       </tr>
-                     ) : (
-                       technicians.map((tech: any) => (
-                         <tr key={tech.id} style={{ borderBottom: "1px solid #eee" }}>
-                           <td style={{ padding: "12px", color: "#333" }}>{tech.full_name}</td>
-                           <td style={{ padding: "12px", color: "#333" }}>{tech.email}</td>
-                           <td style={{ padding: "12px" }}>
-                             <span style={{
-                               padding: "4px 8px",
-                               borderRadius: "12px",
-                               fontSize: "11px",
-                               fontWeight: "500",
-                               background: tech.specialization === "materiel" ? "#007bff" : "#28a745",
+               {/* Grille de cartes des techniciens */}
+               {(() => {
+                 // Filtrer les techniciens
+                 let filteredTechnicians = technicians;
+                 
+                 // Filtre par recherche
+                 if (techSearchQuery) {
+                   const query = techSearchQuery.toLowerCase();
+                   filteredTechnicians = filteredTechnicians.filter((tech: any) =>
+                     tech.full_name?.toLowerCase().includes(query) ||
+                     tech.email?.toLowerCase().includes(query)
+                   );
+                 }
+                 
+                 // Filtre par spécialisation
+                 if (techSpecializationFilter !== "all") {
+                   filteredTechnicians = filteredTechnicians.filter((tech: any) =>
+                     tech.specialization === techSpecializationFilter
+                   );
+                 }
+                 
+                 if (filteredTechnicians.length === 0) {
+                   return (
+                     <div style={{ 
+                       background: "white", 
+                       borderRadius: "8px", 
+                       padding: "40px", 
+                       textAlign: "center", 
+                       color: "#999",
+                       boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                     }}>
+                       Aucun technicien trouvé
+                     </div>
+                   );
+                 }
+                 
+                 return (
+                   <div style={{ 
+                     display: "grid", 
+                     gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", 
+                     gap: "24px" 
+                   }}>
+                     {filteredTechnicians.map((tech: any) => {
+                       // Obtenir les initiales
+                       const initials = tech.full_name
+                         .split(" ")
+                         .map((n: string) => n[0])
+                         .join("")
+                         .toUpperCase()
+                         .substring(0, 2);
+                       
+                       // Couleur de l'avatar basée sur la spécialisation
+                       const avatarColor = tech.specialization === "materiel" ? "#ffc107" : "#28a745";
+                       
+                       // Compétences basées sur la spécialisation
+                       const skills = tech.specialization === "materiel" 
+                         ? ["Hardware", "Imprimantes", "Téléphonie"]
+                         : ["Réseau", "Logiciel", "Applications"];
+                       
+                       return (
+                         <div
+                           key={tech.id}
+                           style={{
+                             background: "white",
+                             borderRadius: "12px",
+                             padding: "20px",
+                             boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                             display: "flex",
+                             flexDirection: "column",
+                             gap: "16px"
+                           }}
+                         >
+                           {/* En-tête avec avatar et titre */}
+                           <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                             <div style={{
+                               width: "60px",
+                               height: "60px",
+                               borderRadius: "50%",
+                               background: avatarColor,
+                               display: "flex",
+                               alignItems: "center",
+                               justifyContent: "center",
                                color: "white",
-                               whiteSpace: "nowrap"
+                               fontSize: "20px",
+                               fontWeight: "700",
+                               flexShrink: 0
                              }}>
-                               {tech.specialization === "materiel" ? "Matériel" : "Applicatif"}
-                             </span>
-                           </td>
-                           <td style={{ padding: "12px", color: "#333" }}>{tech.assigned_tickets_count || 0}</td>
-                           <td style={{ padding: "12px", color: "#333" }}>{tech.in_progress_tickets_count || 0}</td>
-                         </tr>
-                       ))
-                     )}
-                   </tbody>
-                 </table>
+                               {initials}
+                             </div>
+                             <div style={{ flex: 1 }}>
+                               <div style={{ fontSize: "18px", fontWeight: "700", color: "#333", marginBottom: "4px" }}>
+                                 {tech.specialization === "materiel" ? "Technicien Matériel" : "Technicien Applicatif"}
+                               </div>
+                               <div style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>DSI</div>
+                               <span style={{
+                                 padding: "4px 10px",
+                                 borderRadius: "12px",
+                                 fontSize: "12px",
+                                 fontWeight: "500",
+                                 background: "#d4edda",
+                                 color: "#155724"
+                               }}>
+                                 Actif
+                               </span>
+                             </div>
+                           </div>
+                           
+                           {/* Horaires de travail */}
+                           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#666", fontSize: "14px" }}>
+                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                               <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                               <line x1="16" y1="2" x2="16" y2="6" />
+                               <line x1="8" y1="2" x2="8" y2="6" />
+                               <line x1="3" y1="10" x2="21" y2="10" />
+                             </svg>
+                             <span>{tech.work_hours || "08h - 17h"}</span>
+                           </div>
+                           
+                           {/* Statistiques visuelles */}
+                           <div style={{ 
+                             display: "grid", 
+                             gridTemplateColumns: "repeat(3, 1fr)", 
+                             gap: "12px",
+                             padding: "16px",
+                             background: "#f8f9fa",
+                             borderRadius: "8px"
+                           }}>
+                             <div style={{ textAlign: "center" }}>
+                               <div style={{ fontSize: "24px", fontWeight: "700", color: "#007bff", marginBottom: "4px" }}>
+                                 {tech.in_progress_tickets_count || 0}
+                               </div>
+                               <div style={{ fontSize: "12px", color: "#666" }}>En cours</div>
+                             </div>
+                             <div style={{ textAlign: "center" }}>
+                               <div style={{ fontSize: "24px", fontWeight: "700", color: "#28a745", marginBottom: "4px" }}>
+                                 {tech.closed_tickets_count || 0}
+                               </div>
+                               <div style={{ fontSize: "12px", color: "#666" }}>Résolus</div>
+                             </div>
+                             <div style={{ textAlign: "center" }}>
+                               <div style={{ fontSize: "24px", fontWeight: "700", color: "#007bff", marginBottom: "4px" }}>
+                                 {tech.resolved_today || 0}
+                               </div>
+                               <div style={{ fontSize: "12px", color: "#666" }}>Aujourd'hui</div>
+                             </div>
+                           </div>
+                           
+                           {/* Temps de réponse moyen et Charge de travail */}
+                           <div style={{ 
+                             display: "flex", 
+                             justifyContent: "space-between",
+                             padding: "12px",
+                             background: "#f8f9fa",
+                             borderRadius: "8px"
+                           }}>
+                             <div>
+                               <div style={{ fontSize: "12px", color: "#666", marginBottom: "4px" }}>Temps de réponse moyen</div>
+                               <div style={{ fontSize: "18px", fontWeight: "700", color: "#333" }}>
+                                 {tech.avg_response_time_minutes || 0} min
+                               </div>
+                             </div>
+                             <div style={{ textAlign: "right" }}>
+                               <div style={{ fontSize: "12px", color: "#666", marginBottom: "4px" }}>Charge de travail</div>
+                               <div style={{ fontSize: "18px", fontWeight: "700", color: "#ffc107" }}>
+                                 {tech.workload_ratio || "0/5"}
+                               </div>
+                             </div>
+                           </div>
+                           
+                           {/* Contact */}
+                           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                             <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#666", fontSize: "14px" }}>
+                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                 <polyline points="22,6 12,13 2,6" />
+                               </svg>
+                               <span>{tech.email}</span>
+                             </div>
+                             {tech.phone && (
+                               <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#666", fontSize: "14px" }}>
+                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                                 </svg>
+                                 <span>{tech.phone}</span>
+                               </div>
+                             )}
+                           </div>
+                           
+                           {/* Compétences */}
+                           <div>
+                             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                               {skills.map((skill: string, index: number) => (
+                                 <span
+                                   key={index}
+                                   style={{
+                                     padding: "4px 10px",
+                                     borderRadius: "12px",
+                                     fontSize: "12px",
+                                     fontWeight: "500",
+                                     background: "#e3f2fd",
+                                     color: "#1565c0"
+                                   }}
+                                 >
+                                   {skill}
+                                 </span>
+                               ))}
+                             </div>
+                           </div>
+                           
+                           {/* Actions */}
+                           <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                             <button
+                               onClick={async () => {
+                                 setLoadingTechnicianStats(true);
+                                 try {
+                                   const res = await fetch(`http://localhost:8000/users/technicians/${tech.id}/stats`, {
+                                     headers: {
+                                       Authorization: `Bearer ${token}`,
+                                     },
+                                   });
+                                   if (res.ok) {
+                                     const stats = await res.json();
+                                     setSelectedTechnicianDetails({ ...tech, ...stats });
+                                     setShowTechnicianDetailsModal(true);
+                                   } else {
+                                     setSelectedTechnicianDetails(tech);
+                                     setShowTechnicianDetailsModal(true);
+                                   }
+                                 } catch (err) {
+                                   console.error("Erreur:", err);
+                                   setSelectedTechnicianDetails(tech);
+                                   setShowTechnicianDetailsModal(true);
+                                 } finally {
+                                   setLoadingTechnicianStats(false);
+                                 }
+                               }}
+                               style={{
+                                 flex: 1,
+                                 padding: "8px 12px",
+                                 background: "white",
+                                 border: "1px solid #007bff",
+                                 borderRadius: "6px",
+                                 color: "#007bff",
+                                 cursor: "pointer",
+                                 fontSize: "14px",
+                                 fontWeight: "500",
+                                 display: "flex",
+                                 alignItems: "center",
+                                 justifyContent: "center",
+                                 gap: "6px"
+                               }}
+                             >
+                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                 <circle cx="12" cy="12" r="3" />
+                               </svg>
+                               Voir Profil
+                             </button>
+                             <button
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 setEditingTechnician(tech);
+                                 setShowEditTechnicianModal(true);
+                               }}
+                               style={{
+                                 width: "40px",
+                                 height: "40px",
+                                 minWidth: "40px",
+                                 minHeight: "40px",
+                                 background: "#007bff",
+                                 border: "2px solid #007bff",
+                                 borderRadius: "6px",
+                                 color: "white",
+                                 cursor: "pointer",
+                                 display: "flex",
+                                 alignItems: "center",
+                                 justifyContent: "center",
+                                 transition: "all 0.2s ease",
+                                 boxShadow: "0 2px 4px rgba(0,123,255,0.3)"
+                               }}
+                               onMouseEnter={(e) => {
+                                 e.currentTarget.style.background = "#0056b3";
+                                 e.currentTarget.style.borderColor = "#0056b3";
+                                 e.currentTarget.style.transform = "scale(1.05)";
+                               }}
+                               onMouseLeave={(e) => {
+                                 e.currentTarget.style.background = "#007bff";
+                                 e.currentTarget.style.borderColor = "#007bff";
+                                 e.currentTarget.style.transform = "scale(1)";
+                               }}
+                               title="Modifier"
+                             >
+                               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                               </svg>
+                             </button>
+                             <button
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 setTechnicianToDelete(tech);
+                                 setShowDeleteConfirmModal(true);
+                               }}
+                               style={{
+                                 width: "40px",
+                                 height: "40px",
+                                 minWidth: "40px",
+                                 minHeight: "40px",
+                                 background: "#dc3545",
+                                 border: "2px solid #dc3545",
+                                 borderRadius: "6px",
+                                 color: "white",
+                                 cursor: "pointer",
+                                 display: "flex",
+                                 alignItems: "center",
+                                 justifyContent: "center",
+                                 transition: "all 0.2s ease",
+                                 boxShadow: "0 2px 4px rgba(220,53,69,0.3)"
+                               }}
+                               onMouseEnter={(e) => {
+                                 e.currentTarget.style.background = "#c82333";
+                                 e.currentTarget.style.borderColor = "#c82333";
+                                 e.currentTarget.style.transform = "scale(1.05)";
+                               }}
+                               onMouseLeave={(e) => {
+                                 e.currentTarget.style.background = "#dc3545";
+                                 e.currentTarget.style.borderColor = "#dc3545";
+                                 e.currentTarget.style.transform = "scale(1)";
+                               }}
+                               title="Supprimer"
+                             >
+                               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                 <polyline points="3 6 5 6 21 6" />
+                                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                               </svg>
+                             </button>
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 );
+               })()}
+             </div>
+           )}
+
+           {/* Modal de détails du technicien */}
+           {showTechnicianDetailsModal && selectedTechnicianDetails && (
+             <div style={{
+               position: "fixed",
+               top: 0,
+               left: 0,
+               width: "100%",
+               height: "100%",
+               background: "rgba(0, 0, 0, 0.5)",
+               display: "flex",
+               justifyContent: "center",
+               alignItems: "center",
+               zIndex: 1000,
+             }}>
+               <div style={{
+                 background: "white",
+                 padding: "30px",
+                 borderRadius: "10px",
+                 boxShadow: "0 5px 15px rgba(0, 0, 0, 0.3)",
+                 width: "90%",
+                 maxWidth: "600px",
+                 position: "relative",
+                 maxHeight: "90vh",
+                 overflowY: "auto"
+               }}>
+                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+                   <h2 style={{ fontSize: "24px", fontWeight: "600", color: "#333", margin: 0 }}>Détails du Technicien</h2>
+                   <button
+                     onClick={() => {
+                       setShowTechnicianDetailsModal(false);
+                       setSelectedTechnicianDetails(null);
+                     }}
+                     style={{
+                       background: "transparent",
+                       border: "none",
+                       fontSize: "24px",
+                       cursor: "pointer",
+                       color: "#999",
+                       padding: "0",
+                       width: "30px",
+                       height: "30px",
+                       display: "flex",
+                       alignItems: "center",
+                       justifyContent: "center"
+                     }}
+                   >
+                     ×
+                   </button>
+                 </div>
+
+                 <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                   {/* Informations personnelles */}
+                   <div>
+                     <h3 style={{ fontSize: "16px", fontWeight: "600", color: "#333", marginBottom: "12px" }}>Informations personnelles</h3>
+                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                       <div style={{ display: "flex", gap: "12px" }}>
+                         <span style={{ fontWeight: "600", color: "#666", minWidth: "120px" }}>Nom complet:</span>
+                         <span style={{ color: "#333" }}>{selectedTechnicianDetails.full_name}</span>
+                       </div>
+                       <div style={{ display: "flex", gap: "12px" }}>
+                         <span style={{ fontWeight: "600", color: "#666", minWidth: "120px" }}>Email:</span>
+                         <span style={{ color: "#333" }}>{selectedTechnicianDetails.email}</span>
+                       </div>
+                       {selectedTechnicianDetails.phone && (
+                         <div style={{ display: "flex", gap: "12px" }}>
+                           <span style={{ fontWeight: "600", color: "#666", minWidth: "120px" }}>Téléphone:</span>
+                           <span style={{ color: "#333" }}>{selectedTechnicianDetails.phone}</span>
+                         </div>
+                       )}
+                       {selectedTechnicianDetails.agency && (
+                         <div style={{ display: "flex", gap: "12px" }}>
+                           <span style={{ fontWeight: "600", color: "#666", minWidth: "120px" }}>Agence:</span>
+                           <span style={{ color: "#333" }}>{selectedTechnicianDetails.agency}</span>
+                         </div>
+                       )}
+                       <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                         <span style={{ fontWeight: "600", color: "#666", minWidth: "120px" }}>Spécialisation:</span>
+                         <span style={{
+                           padding: "4px 8px",
+                           borderRadius: "12px",
+                           fontSize: "12px",
+                           fontWeight: "500",
+                           background: selectedTechnicianDetails.specialization === "materiel" ? "#007bff" : "#28a745",
+                           color: "white",
+                           whiteSpace: "nowrap"
+                         }}>
+                           {selectedTechnicianDetails.specialization === "materiel" ? "Matériel" : selectedTechnicianDetails.specialization === "applicatif" ? "Applicatif" : "Non défini"}
+                         </span>
+                       </div>
+                       <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                         <span style={{ fontWeight: "600", color: "#666", minWidth: "120px" }}>Statut:</span>
+                         <span style={{
+                           padding: "4px 8px",
+                           borderRadius: "12px",
+                           fontSize: "12px",
+                           fontWeight: "500",
+                           background: selectedTechnicianDetails.status === "actif" ? "#28a745" : "#6c757d",
+                           color: "white",
+                           whiteSpace: "nowrap"
+                         }}>
+                           {selectedTechnicianDetails.status === "actif" ? "Actif" : "Inactif"}
+                         </span>
+                       </div>
+                       <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                         <span style={{ fontWeight: "600", color: "#666", minWidth: "120px" }}>Disponibilité:</span>
+                         <span style={{
+                           padding: "4px 8px",
+                           borderRadius: "12px",
+                           fontSize: "12px",
+                           fontWeight: "500",
+                           background: selectedTechnicianDetails.availability_status === "disponible" ? "#28a745" : selectedTechnicianDetails.availability_status === "occupé" ? "#ffc107" : "#6c757d",
+                           color: "white",
+                           whiteSpace: "nowrap"
+                         }}>
+                           {selectedTechnicianDetails.availability_status === "disponible" ? "Disponible" : selectedTechnicianDetails.availability_status === "occupé" ? "Occupé" : "Non défini"}
+                         </span>
+                       </div>
+                       {selectedTechnicianDetails.last_login_at && (
+                         <div style={{ display: "flex", gap: "12px" }}>
+                           <span style={{ fontWeight: "600", color: "#666", minWidth: "120px" }}>Dernière connexion:</span>
+                           <span style={{ color: "#333" }}>
+                             {new Date(selectedTechnicianDetails.last_login_at).toLocaleString("fr-FR", {
+                               day: "2-digit",
+                               month: "2-digit",
+                               year: "numeric",
+                               hour: "2-digit",
+                               minute: "2-digit"
+                             })}
+                           </span>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+
+                   {/* Statistiques */}
+                   <div>
+                     <h3 style={{ fontSize: "16px", fontWeight: "600", color: "#333", marginBottom: "12px" }}>Statistiques</h3>
+                     <div style={{ 
+                       display: "grid", 
+                       gridTemplateColumns: "repeat(2, 1fr)", 
+                       gap: "16px" 
+                     }}>
+                       <div style={{ 
+                         padding: "16px", 
+                         background: "#f8f9fa", 
+                         borderRadius: "8px",
+                         textAlign: "center"
+                       }}>
+                         <div style={{ fontSize: "32px", fontWeight: "700", color: "#007bff", marginBottom: "4px" }}>
+                           {selectedTechnicianDetails.assigned_tickets_count || 0}
+                         </div>
+                         <div style={{ fontSize: "14px", color: "#666" }}>Tickets Assignés</div>
+                       </div>
+                       <div style={{ 
+                         padding: "16px", 
+                         background: "#f8f9fa", 
+                         borderRadius: "8px",
+                         textAlign: "center"
+                       }}>
+                         <div style={{ fontSize: "32px", fontWeight: "700", color: "#28a745", marginBottom: "4px" }}>
+                           {selectedTechnicianDetails.in_progress_tickets_count || 0}
+                         </div>
+                         <div style={{ fontSize: "14px", color: "#666" }}>Tickets en Cours</div>
+                       </div>
+                       <div style={{ 
+                         padding: "16px", 
+                         background: "#f8f9fa", 
+                         borderRadius: "8px",
+                         textAlign: "center"
+                       }}>
+                         <div style={{ fontSize: "32px", fontWeight: "700", color: "#17a2b8", marginBottom: "4px" }}>
+                           {selectedTechnicianDetails.resolved_tickets_count || 0}
+                         </div>
+                         <div style={{ fontSize: "14px", color: "#666" }}>Tickets Résolus</div>
+                       </div>
+                       <div style={{ 
+                         padding: "16px", 
+                         background: "#f8f9fa", 
+                         borderRadius: "8px",
+                         textAlign: "center"
+                       }}>
+                         <div style={{ fontSize: "32px", fontWeight: "700", color: "#6c757d", marginBottom: "4px" }}>
+                           {selectedTechnicianDetails.closed_tickets_count || 0}
+                         </div>
+                         <div style={{ fontSize: "14px", color: "#666" }}>Tickets Clôturés</div>
+                       </div>
+                       <div style={{ 
+                         padding: "16px", 
+                         background: "#f8f9fa", 
+                         borderRadius: "8px",
+                         textAlign: "center"
+                       }}>
+                         <div style={{ fontSize: "32px", fontWeight: "700", color: "#ffc107", marginBottom: "4px" }}>
+                           {selectedTechnicianDetails.resolved_this_month || 0}
+                         </div>
+                         <div style={{ fontSize: "14px", color: "#666" }}>Résolus ce Mois</div>
+                       </div>
+                       <div style={{ 
+                         padding: "16px", 
+                         background: "#f8f9fa", 
+                         borderRadius: "8px",
+                         textAlign: "center"
+                       }}>
+                         <div style={{ fontSize: "32px", fontWeight: "700", color: "#fd7e14", marginBottom: "4px" }}>
+                           {selectedTechnicianDetails.avg_resolution_time_days !== undefined ? `${selectedTechnicianDetails.avg_resolution_time_days}` : "0"}
+                         </div>
+                         <div style={{ fontSize: "14px", color: "#666" }}>Jours (Moyenne)</div>
+                       </div>
+                       <div style={{ 
+                         padding: "16px", 
+                         background: "#f8f9fa", 
+                         borderRadius: "8px",
+                         textAlign: "center",
+                         gridColumn: "span 2"
+                       }}>
+                         <div style={{ fontSize: "32px", fontWeight: "700", color: "#20c997", marginBottom: "4px" }}>
+                           {selectedTechnicianDetails.success_rate !== undefined ? `${selectedTechnicianDetails.success_rate}%` : "0%"}
+                         </div>
+                         <div style={{ fontSize: "14px", color: "#666" }}>Taux de Réussite</div>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+
+                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px", gap: "12px" }}>
+                   <button
+                     onClick={() => {
+                       setShowTechnicianDetailsModal(false);
+                       setSelectedTechnicianDetails(null);
+                     }}
+                     style={{
+                       padding: "10px 20px",
+                       background: "#6c757d",
+                       color: "white",
+                       border: "none",
+                       borderRadius: "5px",
+                       cursor: "pointer",
+                       fontSize: "14px"
+                     }}
+                   >
+                     Fermer
+                   </button>
+                 </div>
+               </div>
+             </div>
+           )}
+
+           {/* Modal Modifier un technicien */}
+           {showEditTechnicianModal && editingTechnician && (
+             <div style={{
+               position: "fixed",
+               top: 0,
+               left: 0,
+               width: "100%",
+               height: "100%",
+               background: "rgba(0, 0, 0, 0.5)",
+               display: "flex",
+               justifyContent: "center",
+               alignItems: "center",
+               zIndex: 1000,
+             }}>
+               <div style={{
+                 background: "white",
+                 padding: "30px",
+                 borderRadius: "10px",
+                 boxShadow: "0 5px 15px rgba(0, 0, 0, 0.3)",
+                 width: "90%",
+                 maxWidth: "500px",
+                 position: "relative",
+                 maxHeight: "90vh",
+                 overflowY: "auto"
+               }}>
+                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+                   <h2 style={{ fontSize: "24px", fontWeight: "600", color: "#333", margin: 0 }}>Modifier le Technicien</h2>
+                   <button
+                     onClick={() => {
+                       setShowEditTechnicianModal(false);
+                       setEditingTechnician(null);
+                     }}
+                     style={{
+                       background: "transparent",
+                       border: "none",
+                       fontSize: "24px",
+                       cursor: "pointer",
+                       color: "#999",
+                       padding: "0",
+                       width: "30px",
+                       height: "30px",
+                       display: "flex",
+                       alignItems: "center",
+                       justifyContent: "center"
+                     }}
+                   >
+                     ×
+                   </button>
+                 </div>
+
+                 <form onSubmit={async (e) => {
+                   e.preventDefault();
+                   if (!editingTechnician || !token) return;
+                   
+                   setLoading(true);
+                   try {
+                     const updateData: any = {
+                       full_name: (e.target as any).full_name.value,
+                       email: (e.target as any).email.value,
+                       phone: (e.target as any).phone.value || null,
+                       agency: (e.target as any).agency.value || null,
+                       specialization: (e.target as any).specialization.value || null
+                     };
+
+                     const res = await fetch(`http://localhost:8000/users/${editingTechnician.id}`, {
+                       method: "PUT",
+                       headers: {
+                         "Content-Type": "application/json",
+                         Authorization: `Bearer ${token}`,
+                       },
+                       body: JSON.stringify(updateData),
+                     });
+
+                     if (res.ok) {
+                       alert("Technicien modifié avec succès");
+                       setShowEditTechnicianModal(false);
+                       setEditingTechnician(null);
+                       // Recharger les techniciens
+                       const techRes = await fetch("http://localhost:8000/users/technicians", {
+                         headers: {
+                           Authorization: `Bearer ${token}`,
+                         },
+                       });
+                       if (techRes.ok) {
+                         const techData = await techRes.json();
+                         const techsWithStats = await Promise.all(
+                           techData.map(async (tech: any) => {
+                             try {
+                               const statsRes = await fetch(`http://localhost:8000/users/technicians/${tech.id}/stats`, {
+                                 headers: {
+                                   Authorization: `Bearer ${token}`,
+                                 },
+                               });
+                               if (statsRes.ok) {
+                                 const stats = await statsRes.json();
+                                 return { ...tech, ...stats };
+                               }
+                             } catch (err) {
+                               console.error(`Erreur stats pour ${tech.id}:`, err);
+                             }
+                             return { ...tech, work_hours: "08h - 17h", workload_ratio: "0/5", resolved_today: 0, avg_response_time_minutes: 0 };
+                           })
+                         );
+                         setTechnicians(techsWithStats);
+                       }
+                     } else {
+                       const error = await res.json();
+                       alert(`Erreur: ${error.detail || "Impossible de modifier le technicien"}`);
+                     }
+                   } catch (err) {
+                     console.error("Erreur:", err);
+                     alert("Une erreur est survenue lors de la modification");
+                   } finally {
+                     setLoading(false);
+                   }
+                 }}>
+                   <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                     <div>
+                       <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "#333" }}>Nom complet *</label>
+                       <input
+                         type="text"
+                         name="full_name"
+                         defaultValue={editingTechnician.full_name}
+                         required
+                         style={{
+                           width: "100%",
+                           padding: "10px",
+                           border: "1px solid #ddd",
+                           borderRadius: "5px",
+                           fontSize: "14px"
+                         }}
+                       />
+                     </div>
+                     <div>
+                       <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "#333" }}>Email *</label>
+                       <input
+                         type="email"
+                         name="email"
+                         defaultValue={editingTechnician.email}
+                         required
+                         style={{
+                           width: "100%",
+                           padding: "10px",
+                           border: "1px solid #ddd",
+                           borderRadius: "5px",
+                           fontSize: "14px"
+                         }}
+                       />
+                     </div>
+                     <div>
+                       <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "#333" }}>Téléphone</label>
+                       <input
+                         type="tel"
+                         name="phone"
+                         defaultValue={editingTechnician.phone || ""}
+                         style={{
+                           width: "100%",
+                           padding: "10px",
+                           border: "1px solid #ddd",
+                           borderRadius: "5px",
+                           fontSize: "14px"
+                         }}
+                       />
+                     </div>
+                     <div>
+                       <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "#333" }}>Agence</label>
+                       <input
+                         type="text"
+                         name="agency"
+                         defaultValue={editingTechnician.agency || ""}
+                         style={{
+                           width: "100%",
+                           padding: "10px",
+                           border: "1px solid #ddd",
+                           borderRadius: "5px",
+                           fontSize: "14px"
+                         }}
+                       />
+                     </div>
+                     <div>
+                       <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "#333" }}>Spécialisation *</label>
+                       <select
+                         name="specialization"
+                         defaultValue={editingTechnician.specialization || ""}
+                         required
+                         style={{
+                           width: "100%",
+                           padding: "10px",
+                           border: "1px solid #ddd",
+                           borderRadius: "5px",
+                           fontSize: "14px",
+                           background: "white"
+                         }}
+                       >
+                         <option value="">Sélectionner...</option>
+                         <option value="materiel">Matériel</option>
+                         <option value="applicatif">Applicatif</option>
+                       </select>
+                     </div>
+                   </div>
+
+                   <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px", gap: "12px" }}>
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setShowEditTechnicianModal(false);
+                         setEditingTechnician(null);
+                       }}
+                       style={{
+                         padding: "10px 20px",
+                         background: "#6c757d",
+                         color: "white",
+                         border: "none",
+                         borderRadius: "5px",
+                         cursor: "pointer",
+                         fontSize: "14px"
+                       }}
+                     >
+                       Annuler
+                     </button>
+                     <button
+                       type="submit"
+                       disabled={loading}
+                       style={{
+                         padding: "10px 20px",
+                         background: "#007bff",
+                         color: "white",
+                         border: "none",
+                         borderRadius: "5px",
+                         cursor: "pointer",
+                         fontSize: "14px",
+                         opacity: loading ? 0.7 : 1
+                       }}
+                     >
+                       {loading ? "Modification..." : "Modifier"}
+                     </button>
+                   </div>
+                 </form>
+               </div>
+             </div>
+           )}
+
+           {/* Modal Confirmation Suppression */}
+           {showDeleteConfirmModal && technicianToDelete && (
+             <div style={{
+               position: "fixed",
+               top: 0,
+               left: 0,
+               width: "100%",
+               height: "100%",
+               background: "rgba(0, 0, 0, 0.5)",
+               display: "flex",
+               justifyContent: "center",
+               alignItems: "center",
+               zIndex: 1000,
+             }}>
+               <div style={{
+                 background: "white",
+                 padding: "30px",
+                 borderRadius: "10px",
+                 boxShadow: "0 5px 15px rgba(0, 0, 0, 0.3)",
+                 width: "90%",
+                 maxWidth: "400px",
+                 position: "relative"
+               }}>
+                 <h2 style={{ fontSize: "20px", fontWeight: "600", color: "#333", marginBottom: "16px" }}>Confirmer la suppression</h2>
+                 <p style={{ color: "#666", marginBottom: "24px" }}>
+                   Êtes-vous sûr de vouloir supprimer le technicien <strong>{technicianToDelete.full_name}</strong> ? Cette action est irréversible.
+                 </p>
+                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+                   <button
+                     onClick={() => {
+                       setShowDeleteConfirmModal(false);
+                       setTechnicianToDelete(null);
+                     }}
+                     style={{
+                       padding: "10px 20px",
+                       background: "#6c757d",
+                       color: "white",
+                       border: "none",
+                       borderRadius: "5px",
+                       cursor: "pointer",
+                       fontSize: "14px"
+                     }}
+                   >
+                     Annuler
+                   </button>
+                   <button
+                     onClick={async () => {
+                       if (!technicianToDelete || !token) return;
+                       
+                       setLoading(true);
+                       try {
+                         const res = await fetch(`http://localhost:8000/users/${technicianToDelete.id}`, {
+                           method: "DELETE",
+                           headers: {
+                             Authorization: `Bearer ${token}`,
+                           },
+                         });
+
+                         if (res.ok) {
+                           alert("Technicien supprimé avec succès");
+                           setShowDeleteConfirmModal(false);
+                           setTechnicianToDelete(null);
+                           // Recharger les techniciens
+                           const techRes = await fetch("http://localhost:8000/users/technicians", {
+                             headers: {
+                               Authorization: `Bearer ${token}`,
+                             },
+                           });
+                           if (techRes.ok) {
+                             const techData = await techRes.json();
+                             const techsWithStats = await Promise.all(
+                               techData.map(async (tech: any) => {
+                                 try {
+                                   const statsRes = await fetch(`http://localhost:8000/users/technicians/${tech.id}/stats`, {
+                                     headers: {
+                                       Authorization: `Bearer ${token}`,
+                                     },
+                                   });
+                                   if (statsRes.ok) {
+                                     const stats = await statsRes.json();
+                                     return { ...tech, ...stats };
+                                   }
+                                 } catch (err) {
+                                   console.error(`Erreur stats pour ${tech.id}:`, err);
+                                 }
+                                 return { ...tech, work_hours: "08h - 17h", workload_ratio: "0/5", resolved_today: 0, avg_response_time_minutes: 0 };
+                               })
+                             );
+                             setTechnicians(techsWithStats);
+                           }
+                         } else {
+                           const error = await res.json();
+                           alert(`Erreur: ${error.detail || "Impossible de supprimer le technicien"}`);
+                         }
+                       } catch (err) {
+                         console.error("Erreur:", err);
+                         alert("Une erreur est survenue lors de la suppression");
+                       } finally {
+                         setLoading(false);
+                       }
+                     }}
+                     disabled={loading}
+                     style={{
+                       padding: "10px 20px",
+                       background: "#dc3545",
+                       color: "white",
+                       border: "none",
+                       borderRadius: "5px",
+                       cursor: "pointer",
+                       fontSize: "14px",
+                       opacity: loading ? 0.7 : 1
+                     }}
+                   >
+                     {loading ? "Suppression..." : "Supprimer"}
+                   </button>
+                 </div>
                </div>
              </div>
            )}
