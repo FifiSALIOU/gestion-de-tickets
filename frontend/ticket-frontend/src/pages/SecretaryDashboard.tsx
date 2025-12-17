@@ -21,6 +21,7 @@ interface Ticket {
   status: string;
   type: string;  // "materiel" ou "applicatif"
   technician_id: string | null;
+  created_at?: string;
 }
 
 interface Technician {
@@ -97,6 +98,7 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
   const [outputFormat, setOutputFormat] = useState<string>("");
   const [recentReports, setRecentReports] = useState<any[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [openActionsMenuFor, setOpenActionsMenuFor] = useState<string | null>(null);
 
   // Fonction pour charger les rapports récents
   async function loadRecentReports() {
@@ -298,6 +300,26 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
       console.log("showOutputFormat:", showOutputFormat);
     }
   }, [showGenerateReport, showOutputFormat]);
+
+  // Fermer le menu des actions quand on clique en dehors
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (openActionsMenuFor) {
+        const target = e.target as HTMLElement;
+        if (!target.closest('[data-actions-menu]') && !target.closest('button[title="Actions"]')) {
+          setOpenActionsMenuFor(null);
+(null);
+        }
+      }
+    };
+
+    if (openActionsMenuFor) {
+      document.addEventListener('click', handleClickOutside);
+      return () => {
+        document.removeEventListener('click', handleClickOutside);
+      };
+    }
+  }, [openActionsMenuFor]);
 
   // Fonction pour filtrer les techniciens selon le type du ticket
   function getFilteredTechnicians(ticketType: string): Technician[] {
@@ -678,22 +700,41 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "sans-serif", background: "#f5f5f5" }}>
       {/* Sidebar */}
-      <div style={{ 
+      <style>{`
+        .sidebar-custom::-webkit-scrollbar {
+          display: none;
+        }
+        .sidebar-custom {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+      <div className="sidebar-custom" style={{ 
+        position: "fixed",
+        top: 0,
+        left: 0,
+        height: "100vh",
         width: sidebarCollapsed ? "80px" : "250px", 
         background: "#1e293b", 
         color: "white", 
         padding: "20px",
+        paddingTop: "20px",
         display: "flex",
         flexDirection: "column",
         gap: "20px",
-        transition: "width 0.3s ease"
+        transition: "width 0.3s ease",
+        overflowY: "auto",
+        zIndex: 100,
+        boxSizing: "border-box"
       }}>
         <div style={{ 
           display: "flex", 
           alignItems: "center", 
           justifyContent: "space-between",
           marginBottom: "30px",
+          marginTop: "0px",
           paddingBottom: "10px",
+          paddingTop: "0px",
           borderBottom: "1px solid rgba(255,255,255,0.1)"
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
@@ -1110,16 +1151,29 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
       </div>
 
       {/* Main Content */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ 
+        flex: 1, 
+        display: "flex", 
+        flexDirection: "column", 
+        overflow: "hidden",
+        marginLeft: sidebarCollapsed ? "80px" : "250px",
+        transition: "margin-left 0.3s ease"
+      }}>
         {/* Barre de navigation en haut */}
         <div style={{
+          position: "fixed",
+          top: 0,
+          left: sidebarCollapsed ? "80px" : "250px",
+          right: 0,
           background: "#1e293b",
           padding: "16px 30px",
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-end",
           gap: "20px",
-          borderBottom: "1px solid #0f172a"
+          borderBottom: "1px solid #0f172a",
+          zIndex: 99,
+          transition: "left 0.3s ease"
         }}>
           {/* Icône panier - tickets à assigner */}
           <div
@@ -1213,7 +1267,7 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
         </div>
 
         {/* Contenu principal avec scroll */}
-        <div style={{ flex: 1, padding: "30px", overflow: "auto" }}>
+        <div style={{ flex: 1, padding: "30px", overflow: "auto", paddingTop: "80px" }}>
           {activeSection === "dashboard" && (
           <>
               <div style={{ marginBottom: "24px" }}>
@@ -1366,7 +1420,18 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
         </div>
       </div>
 
-              <h3 style={{ marginTop: "32px" }}>Tickets en attente d'analyse</h3>
+              <h3 style={{ marginTop: "32px" }}>Tickets Récents</h3>
+              {(() => {
+                // Obtenir les 5 derniers tickets récents triés par date de création décroissante
+                const recentTickets = [...allTickets]
+                  .sort((a, b) => {
+                    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                    return dateB - dateA;
+                  })
+                  .slice(0, 5);
+                
+                return (
               <table style={{ width: "100%", borderCollapse: "collapse", background: "white", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
         <thead>
           <tr style={{ background: "#f8f9fa" }}>
@@ -1380,14 +1445,14 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
           </tr>
         </thead>
         <tbody>
-          {allTickets.length === 0 ? (
+          {recentTickets.length === 0 ? (
             <tr>
               <td colSpan={7} style={{ textAlign: "center", padding: "20px", color: "#999" }}>
                 Aucun ticket
               </td>
             </tr>
           ) : (
-            allTickets.map((t) => (
+            recentTickets.map((t) => (
               <tr key={t.id} style={{ borderBottom: "1px solid #eee" }}>
                 <td style={{ padding: "12px 16px" }}>#{t.number}</td>
                 <td style={{ padding: "12px 16px" }}>{t.title}</td>
@@ -1403,8 +1468,8 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                     borderRadius: "4px",
                     fontSize: "12px",
                     fontWeight: "500",
-                    background: t.priority === "critique" ? "#f44336" : t.priority === "haute" ? "#fed7aa" : t.priority === "moyenne" ? "#ffc107" : t.priority === "faible" ? "#fee2e2" : "#9e9e9e",
-                    color: t.priority === "haute" ? "#92400e" : t.priority === "faible" ? "#991b1b" : "white"
+                    background: t.priority === "critique" ? "#f44336" : t.priority === "haute" ? "#fed7aa" : t.priority === "moyenne" ? "#E3F2FD" : t.priority === "faible" ? "#fee2e2" : "#9e9e9e",
+                    color: t.priority === "haute" ? "#92400e" : t.priority === "faible" ? "#991b1b" : t.priority === "moyenne" ? "#1565C0" : "white"
                   }}>
                     {t.priority}
                   </span>
@@ -1415,13 +1480,13 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                     borderRadius: "4px",
                     fontSize: "12px",
                     fontWeight: "500",
-                    background: t.status === "en_attente_analyse" ? "#ffc107" : 
+                    background: t.status === "en_attente_analyse" ? "#fef3c7" : 
                                t.status === "assigne_technicien" ? "#007bff" : 
-                               t.status === "en_cours" ? "#ff9800" : 
+                               t.status === "en_cours" ? "#FFDAB9" : 
                                t.status === "resolu" ? "#d4edda" : 
-                               t.status === "cloture" ? "#6c757d" :
+                               t.status === "cloture" ? "#E0E0E0" :
                                t.status === "rejete" ? "#dc3545" : "#e0e0e0",
-                    color: t.status === "resolu" ? "#155724" : "white",
+                    color: t.status === "resolu" ? "#155724" : t.status === "en_attente_analyse" ? "#92400e" : t.status === "en_cours" ? "#8B4513" : t.status === "cloture" ? "#333" : "white",
                     whiteSpace: "nowrap",
                     display: "inline-block"
                   }}>
@@ -1488,77 +1553,182 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                         </div>
                       </div>
                     ) : (
-                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
                         <button
-                          onClick={() => loadTicketDetails(t.id)}
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            
+                            setOpenActionsMenuFor(openActionsMenuFor === t.id ? null : t.id);
+                          }}
                           disabled={loading}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#6c757d", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                        >
-                          Voir détails
-                        </button>
-                        {!t.technician_id && (
-                          <button
-                            onClick={() => setSelectedTicket(t.id)}
-                            disabled={loading}
-                            style={{ 
-                              fontSize: "12px", 
-                              padding: "6px 12px", 
-                              backgroundColor: "#dbeafe", 
-                              color: "#1e40af", 
-                              border: "1px solid #93c5fd",
-                              borderRadius: "20px", 
-                              cursor: loading ? "not-allowed" : "pointer",
-                              fontWeight: "500",
-                              transition: "all 0.2s ease",
-                              opacity: loading ? 0.6 : 1
+                          title="Actions"
+                          aria-label="Actions"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "transparent",
+                            border: "none",
+                            borderRadius: 0,
+                            cursor: "pointer",
+                            color: "#475569",
+                            backgroundImage:
+                              "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='5' r='2' fill='%23475569'/><circle cx='12' cy='12' r='2' fill='%23475569'/><circle cx='12' cy='19' r='2' fill='%23475569'/></svg>\")",
+                            backgroundRepeat: "no-repeat",
+                            backgroundPosition: "center",
+                            backgroundSize: "18px 18px"
+                          }}
+                        />
+                        {openActionsMenuFor === t.id &&  (
+                          <div
+                            style={{
+                              position: "fixed",
+                              background: "white",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 8,
+                              boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                              minWidth: 160,
+                              zIndex: 10000,
+                              overflow: "visible"
                             }}
-                            onMouseEnter={(e) => {
-                              if (!loading) {
-                                e.currentTarget.style.backgroundColor = "#bfdbfe";
-                                e.currentTarget.style.borderColor = "#60a5fa";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!loading) {
-                                e.currentTarget.style.backgroundColor = "#dbeafe";
-                                e.currentTarget.style.borderColor = "#93c5fd";
+                            onClick={(e) => e.stopPropagation()}
+                            ref={(el) => {
+                              if (el) {
+                                const button = el.previousElementSibling as HTMLElement;
+                                if (button) {
+                                  const buttonRect = button.getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuHeight = 220; // Hauteur approximative du menu (3-4 options)
+                                  const margin = 4;
+                                  const spaceBelow = viewportHeight - buttonRect.bottom;
+                                  const spaceAbove = buttonRect.top;
+                                  const minimumSpaceAbove = menuHeight + margin + 100;
+                                  
+                                  // Calculer la position du menu par rapport à la fenêtre (position: fixed)
+                                  const menuWidth = el.offsetWidth || 160;
+                                  let top: number;
+                                  let left: number;
+                                  
+                                  // Déterminer si on affiche vers le haut ou vers le bas
+                                  const canShowUp = spaceBelow < (menuHeight + margin) && spaceAbove >= minimumSpaceAbove;
+                                  
+                                  if (canShowUp) {
+                                    // Afficher vers le haut : positionner au-dessus du bouton
+                                    top = buttonRect.top - menuHeight - margin;
+                                  } else {
+                                    // Afficher vers le bas : positionner en dessous du bouton
+                                    top = buttonRect.bottom + margin;
+                                  }
+                                  
+                                  // Positionner à droite du bouton
+                                  left = buttonRect.right - menuWidth;
+                                  
+                                  // S'assurer que le menu ne dépasse pas de la fenêtre
+                                  if (left < 8) left = 8;
+                                  if (top < 8) top = 8;
+                                  if (top + menuHeight > viewportHeight - 8) {
+                                    top = viewportHeight - menuHeight - 8;
+                                  }
+                                  
+                                  el.style.top = `${top}px`;
+                                  el.style.left = `${left}px`;
+                                  el.style.right = "auto";
+                                  el.style.bottom = "auto";
+                                }
                               }
                             }}
                           >
-                            Assigner
-                          </button>
-                        )}
-                        {roleName !== "Secrétaire DSI" && (
-                          <button
-                            onClick={() => handleEscalate(t.id)}
-                            disabled={loading}
-                            style={{ 
-                              fontSize: "12px", 
-                              padding: "6px 12px", 
-                              backgroundColor: "#fed7aa", 
-                              color: "#9a3412", 
-                              border: "1px solid #fdba74",
-                              borderRadius: "20px", 
-                              cursor: loading ? "not-allowed" : "pointer",
-                              fontWeight: "500",
-                              transition: "all 0.2s ease",
-                              opacity: loading ? 0.6 : 1
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!loading) {
-                                e.currentTarget.style.backgroundColor = "#fcd34d";
-                                e.currentTarget.style.borderColor = "#f59e0b";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!loading) {
-                                e.currentTarget.style.backgroundColor = "#fed7aa";
-                                e.currentTarget.style.borderColor = "#fdba74";
-                              }
-                            }}
-                          >
-                            Escalader
-                          </button>
+                            <button
+                              onClick={() => { loadTicketDetails(t.id); setOpenActionsMenuFor(null); }}
+                              disabled={loading}
+                              style={{ 
+                                width: "100%", 
+                                padding: "10px 12px", 
+                                background: "transparent", 
+                                border: "none", 
+                                textAlign: "left", 
+                                cursor: "pointer",
+                                color: "#111827",
+                                fontSize: "14px",
+                                display: "block",
+                                whiteSpace: "nowrap"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = "#f3f4f6";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = "transparent";
+                              }}
+                            >
+                              Voir détails
+                            </button>
+                            {!t.technician_id && (
+                              <>
+                                <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                <button
+                                  onClick={() => { setSelectedTicket(t.id); setOpenActionsMenuFor(null); }}
+                                  disabled={loading}
+                                  style={{ 
+                                    width: "100%", 
+                                    padding: "10px 12px", 
+                                    background: "transparent", 
+                                    border: "none", 
+                                    textAlign: "left", 
+                                    cursor: loading ? "not-allowed" : "pointer",
+                                    color: "#111827",
+                                    fontSize: "14px",
+                                    display: "block",
+                                    whiteSpace: "nowrap",
+                                    opacity: loading ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = "transparent";
+                                  }}
+                                >
+                                  Assigner
+                                </button>
+                              </>
+                            )}
+                            {roleName !== "Secrétaire DSI" && (
+                              <>
+                                <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                <button
+                                  onClick={() => { handleEscalate(t.id); setOpenActionsMenuFor(null); }}
+                                  disabled={loading}
+                                  style={{ 
+                                    width: "100%", 
+                                    padding: "10px 12px", 
+                                    background: "transparent", 
+                                    border: "none", 
+                                    textAlign: "left", 
+                                    cursor: loading ? "not-allowed" : "pointer",
+                                    color: "#111827",
+                                    fontSize: "14px",
+                                    display: "block",
+                                    whiteSpace: "nowrap",
+                                    opacity: loading ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = "transparent";
+                                  }}
+                                >
+                                  Escalader
+                                </button>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
                     )
@@ -1641,119 +1811,509 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                         </button>
                       </div>
                     ) : (
-                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
                         <button
-                          onClick={() => loadTicketDetails(t.id)}
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            
+                            setOpenActionsMenuFor(openActionsMenuFor === t.id ? null : t.id);
+                          }}
                           disabled={loading}
-                          style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#6c757d", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                        >
-                          Voir détails
-                        </button>
-                        <button
-                          onClick={() => setSelectedTicket(t.id)}
-                          disabled={loading}
-                          style={{ 
-                            fontSize: "12px", 
-                            padding: "6px 12px", 
-                            backgroundColor: "#dbeafe", 
-                            color: "#1e40af", 
-                            border: "1px solid #93c5fd",
-                            borderRadius: "20px", 
-                            cursor: loading ? "not-allowed" : "pointer",
-                            fontWeight: "500",
-                            transition: "all 0.2s ease",
-                            opacity: loading ? 0.6 : 1
+                          title="Actions"
+                          aria-label="Actions"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "transparent",
+                            border: "none",
+                            borderRadius: 0,
+                            cursor: "pointer",
+                            color: "#475569",
+                            backgroundImage:
+                              "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='5' r='2' fill='%23475569'/><circle cx='12' cy='12' r='2' fill='%23475569'/><circle cx='12' cy='19' r='2' fill='%23475569'/></svg>\")",
+                            backgroundRepeat: "no-repeat",
+                            backgroundPosition: "center",
+                            backgroundSize: "18px 18px"
                           }}
-                          onMouseEnter={(e) => {
-                            if (!loading) {
-                              e.currentTarget.style.backgroundColor = "#bfdbfe";
-                              e.currentTarget.style.borderColor = "#60a5fa";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!loading) {
-                              e.currentTarget.style.backgroundColor = "#dbeafe";
-                              e.currentTarget.style.borderColor = "#93c5fd";
-                            }
-                          }}
-                        >
-                          Réassigner
-                        </button>
-                        {roleName !== "Secrétaire DSI" && (
-                          <button
-                            onClick={() => handleEscalate(t.id)}
-                            disabled={loading}
-                            style={{ 
-                              fontSize: "12px", 
-                              padding: "6px 12px", 
-                              backgroundColor: "#fed7aa", 
-                              color: "#9a3412", 
-                              border: "1px solid #fdba74",
-                              borderRadius: "20px", 
-                              cursor: loading ? "not-allowed" : "pointer",
-                              fontWeight: "500",
-                              transition: "all 0.2s ease",
-                              opacity: loading ? 0.6 : 1
+                        />
+                        {openActionsMenuFor === t.id &&  (
+                          <div
+                            style={{
+                              position: "fixed",
+                              background: "white",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 8,
+                              boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                              minWidth: 160,
+                              zIndex: 10000,
+                              overflow: "visible"
                             }}
-                            onMouseEnter={(e) => {
-                              if (!loading) {
-                                e.currentTarget.style.backgroundColor = "#fcd34d";
-                                e.currentTarget.style.borderColor = "#f59e0b";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!loading) {
-                                e.currentTarget.style.backgroundColor = "#fed7aa";
-                                e.currentTarget.style.borderColor = "#fdba74";
+                            onClick={(e) => e.stopPropagation()}
+                            ref={(el) => {
+                              if (el) {
+                                const button = el.previousElementSibling as HTMLElement;
+                                if (button) {
+                                  const buttonRect = button.getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuHeight = 220; // Hauteur approximative du menu (3-4 options)
+                                  const margin = 4;
+                                  const spaceBelow = viewportHeight - buttonRect.bottom;
+                                  const spaceAbove = buttonRect.top;
+                                  const minimumSpaceAbove = menuHeight + margin + 100;
+                                  
+                                  // Calculer la position du menu par rapport à la fenêtre (position: fixed)
+                                  const menuWidth = el.offsetWidth || 160;
+                                  let top: number;
+                                  let left: number;
+                                  
+                                  // Déterminer si on affiche vers le haut ou vers le bas
+                                  const canShowUp = spaceBelow < (menuHeight + margin) && spaceAbove >= minimumSpaceAbove;
+                                  
+                                  if (canShowUp) {
+                                    // Afficher vers le haut : positionner au-dessus du bouton
+                                    top = buttonRect.top - menuHeight - margin;
+                                  } else {
+                                    // Afficher vers le bas : positionner en dessous du bouton
+                                    top = buttonRect.bottom + margin;
+                                  }
+                                  
+                                  // Positionner à droite du bouton
+                                  left = buttonRect.right - menuWidth;
+                                  
+                                  // S'assurer que le menu ne dépasse pas de la fenêtre
+                                  if (left < 8) left = 8;
+                                  if (top < 8) top = 8;
+                                  if (top + menuHeight > viewportHeight - 8) {
+                                    top = viewportHeight - menuHeight - 8;
+                                  }
+                                  
+                                  el.style.top = `${top}px`;
+                                  el.style.left = `${left}px`;
+                                  el.style.right = "auto";
+                                  el.style.bottom = "auto";
+                                }
                               }
                             }}
                           >
-                            Escalader
-                          </button>
+                            <button
+                              onClick={() => { loadTicketDetails(t.id); setOpenActionsMenuFor(null); }}
+                              disabled={loading}
+                              style={{ 
+                                width: "100%", 
+                                padding: "10px 12px", 
+                                background: "transparent", 
+                                border: "none", 
+                                textAlign: "left", 
+                                cursor: "pointer",
+                                color: "#111827",
+                                fontSize: "14px",
+                                display: "block",
+                                whiteSpace: "nowrap"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = "#f3f4f6";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = "transparent";
+                              }}
+                            >
+                              Voir détails
+                            </button>
+                            <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                            <button
+                              onClick={() => { setSelectedTicket(t.id); setOpenActionsMenuFor(null); }}
+                              disabled={loading}
+                              style={{ 
+                                width: "100%", 
+                                padding: "10px 12px", 
+                                background: "transparent", 
+                                border: "none", 
+                                textAlign: "left", 
+                                cursor: loading ? "not-allowed" : "pointer",
+                                color: "#111827",
+                                fontSize: "14px",
+                                display: "block",
+                                whiteSpace: "nowrap",
+                                opacity: loading ? 0.6 : 1
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!loading) {
+                                  e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = "transparent";
+                              }}
+                            >
+                              Réassigner
+                            </button>
+                            {roleName !== "Secrétaire DSI" && (
+                              <>
+                                <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                <button
+                                  onClick={() => { handleEscalate(t.id); setOpenActionsMenuFor(null); }}
+                                  disabled={loading}
+                                  style={{ 
+                                    width: "100%", 
+                                    padding: "10px 12px", 
+                                    background: "transparent", 
+                                    border: "none", 
+                                    textAlign: "left", 
+                                    cursor: loading ? "not-allowed" : "pointer",
+                                    color: "#111827",
+                                    fontSize: "14px",
+                                    display: "block",
+                                    whiteSpace: "nowrap",
+                                    opacity: loading ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!loading) {
+                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = "transparent";
+                                  }}
+                                >
+                                  Escalader
+                                </button>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
                     )
                   ) : t.status === "resolu" ? (
                     // Action pour tickets résolus
-                    <button
-                      onClick={() => handleClose(t.id)}
-                      disabled={loading}
-                      style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#28a745", color: "white", border: "none", borderRadius: "4px", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}
-                    >
-                      Clôturer
-                    </button>
+                    <div style={{ position: "relative" }}>
+                      <button
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          
+                          const isOpen = openActionsMenuFor === t.id;
+                          if (isOpen) {
+                            setOpenActionsMenuFor(null);
+(null);
+                            return;
+                          }
+
+                          const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          const viewportHeight = window.innerHeight;
+                          const menuWidth = 220;
+                          const menuHeight = 120;
+
+                          let top = buttonRect.bottom + 4;
+                          if (viewportHeight - buttonRect.bottom < menuHeight && buttonRect.top > menuHeight) {
+                            top = buttonRect.top - menuHeight - 4;
+                          }
+
+                          let left = buttonRect.right - menuWidth;
+                          if (left < 8) left = 8;
+
+({ top, left });
+                          setOpenActionsMenuFor(t.id);
+                        }}
+                        disabled={loading}
+                        title="Actions"
+                        aria-label="Actions"
+                        style={{
+                          width: 28,
+                          height: 28,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: "transparent",
+                          border: "none",
+                          borderRadius: 0,
+                          cursor: "pointer",
+                          color: "#475569",
+                          backgroundImage:
+                            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='5' r='2' fill='%23475569'/><circle cx='12' cy='12' r='2' fill='%23475569'/><circle cx='12' cy='19' r='2' fill='%23475569'/></svg>\")",
+                          backgroundRepeat: "no-repeat",
+                          backgroundPosition: "center",
+                          backgroundSize: "18px 18px"
+                        }}
+                      />
+                      {openActionsMenuFor === t.id &&  (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "100%",
+                            right: 0,
+                            marginTop: "4px",
+                            background: "white",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                              minWidth: 160,
+                              zIndex: 1000,
+                              overflow: "visible"
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            ref={(el) => {
+                              if (el) {
+                                const button = el.previousElementSibling as HTMLElement;
+                                if (button) {
+                                  const rect = button.getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuHeight = 220; // Hauteur approximative du menu (3-4 options)
+                                  const margin = 4;
+                                  const spaceBelow = viewportHeight - rect.bottom;
+                                  const spaceAbove = rect.top;
+                                  // Seuil minimum pour afficher vers le haut : besoin de beaucoup d'espace en haut
+                                  const minimumSpaceAbove = menuHeight + margin + 100; // Marge très importante
+                                  
+                                  // Réinitialiser tous les styles de positionnement d'abord
+                                  el.style.removeProperty('top');
+                                  el.style.removeProperty('bottom');
+                                  el.style.removeProperty('margin-top');
+                                  el.style.removeProperty('margin-bottom');
+                                  
+                                  // Afficher vers le haut UNIQUEMENT si:
+                                  // 1. Il n'y a vraiment PAS assez d'espace en bas
+                                  // 2. ET il y a BEAUCOUP d'espace en haut (au moins 320px = menu + margin + 100px de sécurité)
+                                  // Cette condition très stricte évite le découpage du menu
+                                  const canShowUp = spaceBelow < (menuHeight + margin) && spaceAbove >= minimumSpaceAbove;
+                                  
+                                  if (canShowUp) {
+                                    el.style.bottom = "100%";
+                                    el.style.top = "auto";
+                                    el.style.marginBottom = `${margin}px`;
+                                    el.style.marginTop = "0";
+                                  } else {
+                                    // TOUJOURS afficher vers le bas si la condition n'est pas remplie
+                                    // Même si cela dépasse un peu, c'est mieux qu'un menu coupé
+                                    el.style.top = "100%";
+                                    el.style.bottom = "auto";
+                                    el.style.marginTop = `${margin}px`;
+                                    el.style.marginBottom = "0";
+                                  }
+                                }
+                              }
+                            }}
+                          >
+                          <button
+                            onClick={() => { loadTicketDetails(t.id); setOpenActionsMenuFor(null); }}
+                            disabled={loading}
+                            style={{ 
+                              width: "100%", 
+                              padding: "10px 12px", 
+                              background: "transparent", 
+                              border: "none", 
+                              textAlign: "left", 
+                              cursor: "pointer",
+                              color: "#111827",
+                              fontSize: "14px",
+                              display: "block",
+                              whiteSpace: "nowrap"
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = "#f3f4f6";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }}
+                          >
+                            Voir détails
+                          </button>
+                          <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                          <button
+                            onClick={() => { handleClose(t.id); setOpenActionsMenuFor(null); }}
+                            disabled={loading}
+                            style={{ 
+                              width: "100%", 
+                              padding: "10px 12px", 
+                              background: "transparent", 
+                              border: "none", 
+                              textAlign: "left", 
+                              cursor: loading ? "not-allowed" : "pointer",
+                              color: "#111827",
+                              fontSize: "14px",
+                              display: "block",
+                              whiteSpace: "nowrap",
+                              opacity: loading ? 0.6 : 1
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!loading) {
+                                e.currentTarget.style.backgroundColor = "#f3f4f6";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }}
+                          >
+                            Clôturer
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ) : t.status === "rejete" ? (
                     // Action pour tickets rejetés - Réouverture
-                    <button
-                      onClick={() => handleReopenClick(t.id)}
-                      disabled={loading}
-                      style={{ 
-                        fontSize: "12px", 
-                        padding: "6px 12px", 
-                        backgroundColor: "#dbeafe", 
-                        color: "#1e40af", 
-                        border: "1px solid #93c5fd",
-                        borderRadius: "20px", 
-                        cursor: loading ? "not-allowed" : "pointer",
-                        fontWeight: "500",
-                        transition: "all 0.2s ease",
-                        opacity: loading ? 0.6 : 1
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!loading) {
-                          e.currentTarget.style.backgroundColor = "#bfdbfe";
-                          e.currentTarget.style.borderColor = "#60a5fa";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!loading) {
-                          e.currentTarget.style.backgroundColor = "#dbeafe";
-                          e.currentTarget.style.borderColor = "#93c5fd";
-                        }
-                      }}
-                    >
-                      Réouvrir
-                    </button>
+                    <div style={{ position: "relative" }}>
+                      <button
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          
+                          const isOpen = openActionsMenuFor === t.id;
+                          if (isOpen) {
+                            setOpenActionsMenuFor(null);
+(null);
+                            return;
+                          }
+
+                          const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          const viewportHeight = window.innerHeight;
+                          const menuWidth = 220;
+                          const menuHeight = 120;
+
+                          let top = buttonRect.bottom + 4;
+                          if (viewportHeight - buttonRect.bottom < menuHeight && buttonRect.top > menuHeight) {
+                            top = buttonRect.top - menuHeight - 4;
+                          }
+
+                          let left = buttonRect.right - menuWidth;
+                          if (left < 8) left = 8;
+
+({ top, left });
+                          setOpenActionsMenuFor(t.id);
+                        }}
+                        disabled={loading}
+                        title="Actions"
+                        aria-label="Actions"
+                        style={{
+                          width: 28,
+                          height: 28,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: "transparent",
+                          border: "none",
+                          borderRadius: 0,
+                          cursor: "pointer",
+                          color: "#475569",
+                          backgroundImage:
+                            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='5' r='2' fill='%23475569'/><circle cx='12' cy='12' r='2' fill='%23475569'/><circle cx='12' cy='19' r='2' fill='%23475569'/></svg>\")",
+                          backgroundRepeat: "no-repeat",
+                          backgroundPosition: "center",
+                          backgroundSize: "18px 18px"
+                        }}
+                      />
+                      {openActionsMenuFor === t.id &&  (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "100%",
+                            right: 0,
+                            marginTop: "4px",
+                            background: "white",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                              minWidth: 160,
+                              zIndex: 1000,
+                              overflow: "visible"
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            ref={(el) => {
+                              if (el) {
+                                const button = el.previousElementSibling as HTMLElement;
+                                if (button) {
+                                  const rect = button.getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuHeight = 220; // Hauteur approximative du menu (3-4 options)
+                                  const margin = 4;
+                                  const spaceBelow = viewportHeight - rect.bottom;
+                                  const spaceAbove = rect.top;
+                                  // Seuil minimum pour afficher vers le haut : besoin de beaucoup d'espace en haut
+                                  const minimumSpaceAbove = menuHeight + margin + 100; // Marge très importante
+                                  
+                                  // Réinitialiser tous les styles de positionnement d'abord
+                                  el.style.removeProperty('top');
+                                  el.style.removeProperty('bottom');
+                                  el.style.removeProperty('margin-top');
+                                  el.style.removeProperty('margin-bottom');
+                                  
+                                  // Afficher vers le haut UNIQUEMENT si:
+                                  // 1. Il n'y a vraiment PAS assez d'espace en bas
+                                  // 2. ET il y a BEAUCOUP d'espace en haut (au moins 320px = menu + margin + 100px de sécurité)
+                                  // Cette condition très stricte évite le découpage du menu
+                                  const canShowUp = spaceBelow < (menuHeight + margin) && spaceAbove >= minimumSpaceAbove;
+                                  
+                                  if (canShowUp) {
+                                    el.style.bottom = "100%";
+                                    el.style.top = "auto";
+                                    el.style.marginBottom = `${margin}px`;
+                                    el.style.marginTop = "0";
+                                  } else {
+                                    // TOUJOURS afficher vers le bas si la condition n'est pas remplie
+                                    // Même si cela dépasse un peu, c'est mieux qu'un menu coupé
+                                    el.style.top = "100%";
+                                    el.style.bottom = "auto";
+                                    el.style.marginTop = `${margin}px`;
+                                    el.style.marginBottom = "0";
+                                  }
+                                }
+                              }
+                            }}
+                          >
+                          <button
+                            onClick={() => { loadTicketDetails(t.id); setOpenActionsMenuFor(null); }}
+                            disabled={loading}
+                            style={{ 
+                              width: "100%", 
+                              padding: "10px 12px", 
+                              background: "transparent", 
+                              border: "none", 
+                              textAlign: "left", 
+                              cursor: "pointer",
+                              color: "#111827",
+                              fontSize: "14px",
+                              display: "block",
+                              whiteSpace: "nowrap"
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = "#f3f4f6";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }}
+                          >
+                            Voir détails
+                          </button>
+                          <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                          <button
+                            onClick={() => { handleReopenClick(t.id); setOpenActionsMenuFor(null); }}
+                            disabled={loading}
+                            style={{ 
+                              width: "100%", 
+                              padding: "10px 12px", 
+                              background: "transparent", 
+                              border: "none", 
+                              textAlign: "left", 
+                              cursor: loading ? "not-allowed" : "pointer",
+                              color: "#111827",
+                              fontSize: "14px",
+                              display: "block",
+                              whiteSpace: "nowrap",
+                              opacity: loading ? 0.6 : 1
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!loading) {
+                                e.currentTarget.style.backgroundColor = "#f3f4f6";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }}
+                          >
+                            Réouvrir
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     // Pas d'action pour tickets clôturés
                     <span style={{ color: "#999", fontSize: "12px" }}>
@@ -1766,6 +2326,8 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
           )}
               </tbody>
               </table>
+                );
+              })()}
             </>
           )}
 
@@ -1882,8 +2444,8 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                             borderRadius: "4px",
                             fontSize: "12px",
                             fontWeight: "500",
-                            background: t.priority === "critique" ? "#f44336" : t.priority === "haute" ? "#fed7aa" : t.priority === "moyenne" ? "#ffc107" : "#9e9e9e",
-                            color: t.priority === "haute" ? "#92400e" : "white"
+                            background: t.priority === "critique" ? "#f44336" : t.priority === "haute" ? "#fed7aa" : t.priority === "moyenne" ? "#E3F2FD" : t.priority === "faible" ? "#fee2e2" : "#9e9e9e",
+                            color: t.priority === "haute" ? "#92400e" : t.priority === "faible" ? "#991b1b" : t.priority === "moyenne" ? "#1565C0" : "white"
                           }}>
                             {t.priority}
                           </span>
@@ -1894,13 +2456,13 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                             borderRadius: "4px",
                             fontSize: "12px",
                             fontWeight: "500",
-                            background: t.status === "en_attente_analyse" ? "#ffc107" : 
+                            background: t.status === "en_attente_analyse" ? "#fef3c7" : 
                                        t.status === "assigne_technicien" ? "#007bff" : 
-                                       t.status === "en_cours" ? "#ff9800" : 
-                                       t.status === "resolu" ? "#28a745" : 
-                                       t.status === "cloture" ? "#6c757d" :
+                                       t.status === "en_cours" ? "#FFDAB9" : 
+                                       t.status === "resolu" ? "#d4edda" : 
+                                       t.status === "cloture" ? "#E0E0E0" :
                                        t.status === "rejete" ? "#dc3545" : "#e0e0e0",
-                            color: "white",
+                            color: t.status === "resolu" ? "#155724" : t.status === "en_attente_analyse" ? "#92400e" : t.status === "en_cours" ? "#8B4513" : t.status === "cloture" ? "#333" : "white",
                             whiteSpace: "nowrap",
                             display: "inline-block"
                           }}>
@@ -1966,33 +2528,204 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                                 </div>
                               </div>
                             ) : (
-                            <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
                               <button
-                                onClick={() => loadTicketDetails(t.id)}
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  
+                                  const isOpen = openActionsMenuFor === t.id;
+                                  if (isOpen) {
+                                    setOpenActionsMenuFor(null);
+(null);
+                                    return;
+                                  }
+
+                                  const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuWidth = 220;
+                                  const menuHeight = 220;
+
+                                  let top = buttonRect.bottom + 4;
+                                  if (viewportHeight - buttonRect.bottom < menuHeight && buttonRect.top > menuHeight) {
+                                    top = buttonRect.top - menuHeight - 4;
+                                  }
+
+                                  let left = buttonRect.right - menuWidth;
+                                  if (left < 8) left = 8;
+
+({ top, left });
+                                  setOpenActionsMenuFor(t.id);
+                                }}
                                 disabled={loading}
-                                style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#6c757d", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                              >
-                                Voir détails
-                              </button>
-                                {!t.technician_id && (
+                                title="Actions"
+                                aria-label="Actions"
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  background: "transparent",
+                                  border: "none",
+                                  borderRadius: 0,
+                                  cursor: "pointer",
+                                  color: "#475569",
+                                  backgroundImage:
+                                    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='5' r='2' fill='%23475569'/><circle cx='12' cy='12' r='2' fill='%23475569'/><circle cx='12' cy='19' r='2' fill='%23475569'/></svg>\")",
+                                  backgroundRepeat: "no-repeat",
+                                  backgroundPosition: "center",
+                                  backgroundSize: "18px 18px"
+                                }}
+                              />
+                              {openActionsMenuFor === t.id &&  (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    top: "100%",
+                                    right: 0,
+                                    marginTop: "4px",
+                                    background: "white",
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: 8,
+                                    boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                              minWidth: 160,
+                              zIndex: 1000,
+                              overflow: "visible"
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            ref={(el) => {
+                              if (el) {
+                                const button = el.previousElementSibling as HTMLElement;
+                                if (button) {
+                                  const rect = button.getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuHeight = 220; // Hauteur approximative du menu (3-4 options)
+                                  const margin = 4;
+                                  const spaceBelow = viewportHeight - rect.bottom;
+                                  const spaceAbove = rect.top;
+                                  // Seuil minimum pour afficher vers le haut : besoin de beaucoup d'espace en haut
+                                  const minimumSpaceAbove = menuHeight + margin + 100; // Marge très importante
+                                  
+                                  // Réinitialiser tous les styles de positionnement d'abord
+                                  el.style.removeProperty('top');
+                                  el.style.removeProperty('bottom');
+                                  el.style.removeProperty('margin-top');
+                                  el.style.removeProperty('margin-bottom');
+                                  
+                                  // Afficher vers le haut UNIQUEMENT si:
+                                  // 1. Il n'y a vraiment PAS assez d'espace en bas
+                                  // 2. ET il y a BEAUCOUP d'espace en haut (au moins 320px = menu + margin + 100px de sécurité)
+                                  // Cette condition très stricte évite le découpage du menu
+                                  const canShowUp = spaceBelow < (menuHeight + margin) && spaceAbove >= minimumSpaceAbove;
+                                  
+                                  if (canShowUp) {
+                                    el.style.bottom = "100%";
+                                    el.style.top = "auto";
+                                    el.style.marginBottom = `${margin}px`;
+                                    el.style.marginTop = "0";
+                                  } else {
+                                    // TOUJOURS afficher vers le bas si la condition n'est pas remplie
+                                    // Même si cela dépasse un peu, c'est mieux qu'un menu coupé
+                                    el.style.top = "100%";
+                                    el.style.bottom = "auto";
+                                    el.style.marginTop = `${margin}px`;
+                                    el.style.marginBottom = "0";
+                                  }
+                                }
+                              }
+                            }}
+                          >
                                   <button
-                                    onClick={() => setSelectedTicket(t.id)}
+                                    onClick={() => { loadTicketDetails(t.id); setOpenActionsMenuFor(null); }}
                                     disabled={loading}
-                                    style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}
+                                    style={{ 
+                                      width: "100%", 
+                                      padding: "10px 12px", 
+                                      background: "transparent", 
+                                      border: "none", 
+                                      textAlign: "left", 
+                                      cursor: "pointer",
+                                      color: "#111827",
+                                      fontSize: "14px",
+                                      display: "block",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "transparent";
+                                    }}
                                   >
-                                    Assigner
+                                    Voir détails
                                   </button>
-                                )}
-                                {roleName !== "Secrétaire DSI" && (
-                                  <button
-                                    onClick={() => handleEscalate(t.id)}
-                                    disabled={loading}
-                                    style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#ff9800", color: "white", border: "none", borderRadius: "4px", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}
-                                  >
-                                    Escalader
-                                  </button>
-                                )}
-                              </div>
+                                  {!t.technician_id && (
+                                    <>
+                                      <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                      <button
+                                        onClick={() => { setSelectedTicket(t.id); setOpenActionsMenuFor(null); }}
+                                        disabled={loading}
+                                        style={{ 
+                                          width: "100%", 
+                                          padding: "10px 12px", 
+                                          background: "transparent", 
+                                          border: "none", 
+                                          textAlign: "left", 
+                                          cursor: loading ? "not-allowed" : "pointer",
+                                          color: "#111827",
+                                          fontSize: "14px",
+                                          display: "block",
+                                          whiteSpace: "nowrap",
+                                          opacity: loading ? 0.6 : 1
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!loading) {
+                                            e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.backgroundColor = "transparent";
+                                        }}
+                                      >
+                                        Assigner
+                                      </button>
+                                    </>
+                                  )}
+                                  {roleName !== "Secrétaire DSI" && (
+                                    <>
+                                      <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                      <button
+                                        onClick={() => { handleEscalate(t.id); setOpenActionsMenuFor(null); }}
+                                        disabled={loading}
+                                        style={{ 
+                                          width: "100%", 
+                                          padding: "10px 12px", 
+                                          background: "transparent", 
+                                          border: "none", 
+                                          textAlign: "left", 
+                                          cursor: loading ? "not-allowed" : "pointer",
+                                          color: "#111827",
+                                          fontSize: "14px",
+                                          display: "block",
+                                          whiteSpace: "nowrap",
+                                          opacity: loading ? 0.6 : 1
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!loading) {
+                                            e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.backgroundColor = "transparent";
+                                        }}
+                                      >
+                                        Escalader
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             )
                           ) : t.status === "assigne_technicien" || t.status === "en_cours" ? (
                             selectedTicket === t.id ? (
@@ -2031,48 +2764,527 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                                 </button>
                               </div>
                             ) : (
-                              <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
                                 <button
-                                  onClick={() => loadTicketDetails(t.id)}
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    
+                                    const isOpen = openActionsMenuFor === t.id;
+                                    if (isOpen) {
+                                      setOpenActionsMenuFor(null);
+(null);
+                                      return;
+                                    }
+
+                                    const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                    const viewportHeight = window.innerHeight;
+                                    const menuWidth = 220;
+                                    const menuHeight = 220;
+
+                                    let top = buttonRect.bottom + 4;
+                                    if (viewportHeight - buttonRect.bottom < menuHeight && buttonRect.top > menuHeight) {
+                                      top = buttonRect.top - menuHeight - 4;
+                                    }
+
+                                    let left = buttonRect.right - menuWidth;
+                                    if (left < 8) left = 8;
+
+({ top, left });
+                                    setOpenActionsMenuFor(t.id);
+                                  }}
                                   disabled={loading}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#6c757d", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                                >
-                                  Voir détails
-                                </button>
-                                <button
-                                  onClick={() => setSelectedTicket(t.id)}
-                                  disabled={loading}
-                                  style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}
-                                >
-                                  Réassigner
-                                </button>
-                                {roleName !== "Secrétaire DSI" && (
-                                  <button
-                                    onClick={() => handleEscalate(t.id)}
-                                    disabled={loading}
-                                    style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#ff9800", color: "white", border: "none", borderRadius: "4px", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}
-                                  >
-                                    Escalader
-                                  </button>
+                                  title="Actions"
+                                  aria-label="Actions"
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    background: "transparent",
+                                    border: "none",
+                                    borderRadius: 0,
+                                    cursor: "pointer",
+                                    color: "#475569",
+                                    backgroundImage:
+                                      "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='5' r='2' fill='%23475569'/><circle cx='12' cy='12' r='2' fill='%23475569'/><circle cx='12' cy='19' r='2' fill='%23475569'/></svg>\")",
+                                    backgroundRepeat: "no-repeat",
+                                    backgroundPosition: "center",
+                                    backgroundSize: "18px 18px"
+                                  }}
+                                />
+                                {openActionsMenuFor === t.id &&  (
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      top: "100%",
+                                      right: 0,
+                                      marginTop: "4px",
+                                      background: "white",
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: 8,
+                                      boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                              minWidth: 160,
+                              zIndex: 1000,
+                              overflow: "visible"
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            ref={(el) => {
+                              if (el) {
+                                const button = el.previousElementSibling as HTMLElement;
+                                if (button) {
+                                  const rect = button.getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuHeight = 220; // Hauteur approximative du menu (3-4 options)
+                                  const margin = 4;
+                                  const spaceBelow = viewportHeight - rect.bottom;
+                                  const spaceAbove = rect.top;
+                                  // Seuil minimum pour afficher vers le haut : besoin de beaucoup d'espace en haut
+                                  const minimumSpaceAbove = menuHeight + margin + 100; // Marge très importante
+                                  
+                                  // Réinitialiser tous les styles de positionnement d'abord
+                                  el.style.removeProperty('top');
+                                  el.style.removeProperty('bottom');
+                                  el.style.removeProperty('margin-top');
+                                  el.style.removeProperty('margin-bottom');
+                                  
+                                  // Afficher vers le haut UNIQUEMENT si:
+                                  // 1. Il n'y a vraiment PAS assez d'espace en bas
+                                  // 2. ET il y a BEAUCOUP d'espace en haut (au moins 320px = menu + margin + 100px de sécurité)
+                                  // Cette condition très stricte évite le découpage du menu
+                                  const canShowUp = spaceBelow < (menuHeight + margin) && spaceAbove >= minimumSpaceAbove;
+                                  
+                                  if (canShowUp) {
+                                    el.style.bottom = "100%";
+                                    el.style.top = "auto";
+                                    el.style.marginBottom = `${margin}px`;
+                                    el.style.marginTop = "0";
+                                  } else {
+                                    // TOUJOURS afficher vers le bas si la condition n'est pas remplie
+                                    // Même si cela dépasse un peu, c'est mieux qu'un menu coupé
+                                    el.style.top = "100%";
+                                    el.style.bottom = "auto";
+                                    el.style.marginTop = `${margin}px`;
+                                    el.style.marginBottom = "0";
+                                  }
+                                }
+                              }
+                            }}
+                          >
+                                    <button
+                                      onClick={() => { loadTicketDetails(t.id); setOpenActionsMenuFor(null); }}
+                                      disabled={loading}
+                                      style={{ 
+                                        width: "100%", 
+                                        padding: "10px 12px", 
+                                        background: "transparent", 
+                                        border: "none", 
+                                        textAlign: "left", 
+                                        cursor: "pointer",
+                                        color: "#111827",
+                                        fontSize: "14px",
+                                        display: "block",
+                                        whiteSpace: "nowrap"
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = "transparent";
+                                      }}
+                                    >
+                                      Voir détails
+                                    </button>
+                                    <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                    <button
+                                      onClick={() => { setSelectedTicket(t.id); setOpenActionsMenuFor(null); }}
+                                      disabled={loading}
+                                      style={{ 
+                                        width: "100%", 
+                                        padding: "10px 12px", 
+                                        background: "transparent", 
+                                        border: "none", 
+                                        textAlign: "left", 
+                                        cursor: loading ? "not-allowed" : "pointer",
+                                        color: "#111827",
+                                        fontSize: "14px",
+                                        display: "block",
+                                        whiteSpace: "nowrap",
+                                        opacity: loading ? 0.6 : 1
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        if (!loading) {
+                                          e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                        }
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = "transparent";
+                                      }}
+                                    >
+                                      Réassigner
+                                    </button>
+                                    {roleName !== "Secrétaire DSI" && (
+                                      <>
+                                        <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                        <button
+                                          onClick={() => { handleEscalate(t.id); setOpenActionsMenuFor(null); }}
+                                          disabled={loading}
+                                          style={{ 
+                                            width: "100%", 
+                                            padding: "10px 12px", 
+                                            background: "transparent", 
+                                            border: "none", 
+                                            textAlign: "left", 
+                                            cursor: loading ? "not-allowed" : "pointer",
+                                            color: "#111827",
+                                            fontSize: "14px",
+                                            display: "block",
+                                            whiteSpace: "nowrap",
+                                            opacity: loading ? 0.6 : 1
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            if (!loading) {
+                                              e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                            }
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = "transparent";
+                                          }}
+                                        >
+                                          Escalader
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             )
                           ) : t.status === "resolu" ? (
-                            <button
-                              onClick={() => handleClose(t.id)}
-                              disabled={loading}
-                              style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#28a745", color: "white", border: "none", borderRadius: "4px", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}
-                            >
-                              Clôturer
-                            </button>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
+                              <button
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  
+                                  const isOpen = openActionsMenuFor === t.id;
+                                  if (isOpen) {
+                                    setOpenActionsMenuFor(null);
+(null);
+                                    return;
+                                  }
+
+                                  const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuWidth = 220;
+                                  const menuHeight = 120;
+
+                                  let top = buttonRect.bottom + 4;
+                                  if (viewportHeight - buttonRect.bottom < menuHeight && buttonRect.top > menuHeight) {
+                                    top = buttonRect.top - menuHeight - 4;
+                                  }
+
+                                  let left = buttonRect.right - menuWidth;
+                                  if (left < 8) left = 8;
+
+({ top, left });
+                                  setOpenActionsMenuFor(t.id);
+                                }}
+                                disabled={loading}
+                                title="Actions"
+                                aria-label="Actions"
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  background: "transparent",
+                                  border: "none",
+                                  borderRadius: 0,
+                                  cursor: "pointer",
+                                  color: "#475569",
+                                  backgroundImage:
+                                    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='5' r='2' fill='%23475569'/><circle cx='12' cy='12' r='2' fill='%23475569'/><circle cx='12' cy='19' r='2' fill='%23475569'/></svg>\")",
+                                  backgroundRepeat: "no-repeat",
+                                  backgroundPosition: "center",
+                                  backgroundSize: "18px 18px"
+                                }}
+                              />
+                              {openActionsMenuFor === t.id &&  (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    top: "100%",
+                                    right: 0,
+                                    marginTop: "4px",
+                                    background: "white",
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: 8,
+                                    boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                              minWidth: 160,
+                              zIndex: 1000,
+                              overflow: "visible"
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            ref={(el) => {
+                              if (el) {
+                                const button = el.previousElementSibling as HTMLElement;
+                                if (button) {
+                                  const rect = button.getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuHeight = 220; // Hauteur approximative du menu (3-4 options)
+                                  const margin = 4;
+                                  const spaceBelow = viewportHeight - rect.bottom;
+                                  const spaceAbove = rect.top;
+                                  // Seuil minimum pour afficher vers le haut : besoin de beaucoup d'espace en haut
+                                  const minimumSpaceAbove = menuHeight + margin + 100; // Marge très importante
+                                  
+                                  // Réinitialiser tous les styles de positionnement d'abord
+                                  el.style.removeProperty('top');
+                                  el.style.removeProperty('bottom');
+                                  el.style.removeProperty('margin-top');
+                                  el.style.removeProperty('margin-bottom');
+                                  
+                                  // Afficher vers le haut UNIQUEMENT si:
+                                  // 1. Il n'y a vraiment PAS assez d'espace en bas
+                                  // 2. ET il y a BEAUCOUP d'espace en haut (au moins 320px = menu + margin + 100px de sécurité)
+                                  // Cette condition très stricte évite le découpage du menu
+                                  const canShowUp = spaceBelow < (menuHeight + margin) && spaceAbove >= minimumSpaceAbove;
+                                  
+                                  if (canShowUp) {
+                                    el.style.bottom = "100%";
+                                    el.style.top = "auto";
+                                    el.style.marginBottom = `${margin}px`;
+                                    el.style.marginTop = "0";
+                                  } else {
+                                    // TOUJOURS afficher vers le bas si la condition n'est pas remplie
+                                    // Même si cela dépasse un peu, c'est mieux qu'un menu coupé
+                                    el.style.top = "100%";
+                                    el.style.bottom = "auto";
+                                    el.style.marginTop = `${margin}px`;
+                                    el.style.marginBottom = "0";
+                                  }
+                                }
+                              }
+                            }}
+                          >
+                                  <button
+                                    onClick={() => { loadTicketDetails(t.id); setOpenActionsMenuFor(null); }}
+                                    disabled={loading}
+                                    style={{ 
+                                      width: "100%", 
+                                      padding: "10px 12px", 
+                                      background: "transparent", 
+                                      border: "none", 
+                                      textAlign: "left", 
+                                      cursor: "pointer",
+                                      color: "#111827",
+                                      fontSize: "14px",
+                                      display: "block",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "transparent";
+                                    }}
+                                  >
+                                    Voir détails
+                                  </button>
+                                  <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                  <button
+                                    onClick={() => { handleClose(t.id); setOpenActionsMenuFor(null); }}
+                                    disabled={loading}
+                                    style={{ 
+                                      width: "100%", 
+                                      padding: "10px 12px", 
+                                      background: "transparent", 
+                                      border: "none", 
+                                      textAlign: "left", 
+                                      cursor: loading ? "not-allowed" : "pointer",
+                                      color: "#111827",
+                                      fontSize: "14px",
+                                      display: "block",
+                                      whiteSpace: "nowrap",
+                                      opacity: loading ? 0.6 : 1
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!loading) {
+                                        e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "transparent";
+                                    }}
+                                  >
+                                    Clôturer
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           ) : t.status === "rejete" ? (
-                            <button
-                              onClick={() => handleReopenClick(t.id)}
-                              disabled={loading}
-                              style={{ fontSize: "12px", padding: "6px 12px", backgroundColor: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}
-                            >
-                              Réouvrir
-                            </button>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
+                              <button
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  
+                                  const isOpen = openActionsMenuFor === t.id;
+                                  if (isOpen) {
+                                    setOpenActionsMenuFor(null);
+(null);
+                                    return;
+                                  }
+
+                                  const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuWidth = 220;
+                                  const menuHeight = 120;
+
+                                  let top = buttonRect.bottom + 4;
+                                  if (viewportHeight - buttonRect.bottom < menuHeight && buttonRect.top > menuHeight) {
+                                    top = buttonRect.top - menuHeight - 4;
+                                  }
+
+                                  let left = buttonRect.right - menuWidth;
+                                  if (left < 8) left = 8;
+
+({ top, left });
+                                  setOpenActionsMenuFor(t.id);
+                                }}
+                                disabled={loading}
+                                title="Actions"
+                                aria-label="Actions"
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  background: "transparent",
+                                  border: "none",
+                                  borderRadius: 0,
+                                  cursor: "pointer",
+                                  color: "#475569",
+                                  backgroundImage:
+                                    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='5' r='2' fill='%23475569'/><circle cx='12' cy='12' r='2' fill='%23475569'/><circle cx='12' cy='19' r='2' fill='%23475569'/></svg>\")",
+                                  backgroundRepeat: "no-repeat",
+                                  backgroundPosition: "center",
+                                  backgroundSize: "18px 18px"
+                                }}
+                              />
+                              {openActionsMenuFor === t.id &&  (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    top: "100%",
+                                    right: 0,
+                                    marginTop: "4px",
+                                    background: "white",
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: 8,
+                                    boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                              minWidth: 160,
+                              zIndex: 1000,
+                              overflow: "visible"
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            ref={(el) => {
+                              if (el) {
+                                const button = el.previousElementSibling as HTMLElement;
+                                if (button) {
+                                  const rect = button.getBoundingClientRect();
+                                  const viewportHeight = window.innerHeight;
+                                  const menuHeight = 220; // Hauteur approximative du menu (3-4 options)
+                                  const margin = 4;
+                                  const spaceBelow = viewportHeight - rect.bottom;
+                                  const spaceAbove = rect.top;
+                                  // Seuil minimum pour afficher vers le haut : besoin de beaucoup d'espace en haut
+                                  const minimumSpaceAbove = menuHeight + margin + 100; // Marge très importante
+                                  
+                                  // Réinitialiser tous les styles de positionnement d'abord
+                                  el.style.removeProperty('top');
+                                  el.style.removeProperty('bottom');
+                                  el.style.removeProperty('margin-top');
+                                  el.style.removeProperty('margin-bottom');
+                                  
+                                  // Afficher vers le haut UNIQUEMENT si:
+                                  // 1. Il n'y a vraiment PAS assez d'espace en bas
+                                  // 2. ET il y a BEAUCOUP d'espace en haut (au moins 320px = menu + margin + 100px de sécurité)
+                                  // Cette condition très stricte évite le découpage du menu
+                                  const canShowUp = spaceBelow < (menuHeight + margin) && spaceAbove >= minimumSpaceAbove;
+                                  
+                                  if (canShowUp) {
+                                    el.style.bottom = "100%";
+                                    el.style.top = "auto";
+                                    el.style.marginBottom = `${margin}px`;
+                                    el.style.marginTop = "0";
+                                  } else {
+                                    // TOUJOURS afficher vers le bas si la condition n'est pas remplie
+                                    // Même si cela dépasse un peu, c'est mieux qu'un menu coupé
+                                    el.style.top = "100%";
+                                    el.style.bottom = "auto";
+                                    el.style.marginTop = `${margin}px`;
+                                    el.style.marginBottom = "0";
+                                  }
+                                }
+                              }
+                            }}
+                          >
+                                  <button
+                                    onClick={() => { loadTicketDetails(t.id); setOpenActionsMenuFor(null); }}
+                                    disabled={loading}
+                                    style={{ 
+                                      width: "100%", 
+                                      padding: "10px 12px", 
+                                      background: "transparent", 
+                                      border: "none", 
+                                      textAlign: "left", 
+                                      cursor: "pointer",
+                                      color: "#111827",
+                                      fontSize: "14px",
+                                      display: "block",
+                                      whiteSpace: "nowrap"
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "transparent";
+                                    }}
+                                  >
+                                    Voir détails
+                                  </button>
+                                  <div style={{ borderTop: "1px solid #e5e7eb" }}></div>
+                                  <button
+                                    onClick={() => { handleReopenClick(t.id); setOpenActionsMenuFor(null); }}
+                                    disabled={loading}
+                                    style={{ 
+                                      width: "100%", 
+                                      padding: "10px 12px", 
+                                      background: "transparent", 
+                                      border: "none", 
+                                      textAlign: "left", 
+                                      cursor: loading ? "not-allowed" : "pointer",
+                                      color: "#111827",
+                                      fontSize: "14px",
+                                      display: "block",
+                                      whiteSpace: "nowrap",
+                                      opacity: loading ? 0.6 : 1
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!loading) {
+                                        e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "transparent";
+                                    }}
+                                  >
+                                    Réouvrir
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <span style={{ color: "#999", fontSize: "12px" }}>
                               {t.status === "cloture" ? "Clôturé" : "N/A"}
@@ -2131,8 +3343,8 @@ function SecretaryDashboard({ token }: SecretaryDashboardProps) {
                   borderRadius: "4px",
                   fontSize: "12px",
                   fontWeight: "500",
-                  background: ticketDetails.priority === "critique" ? "#f44336" : ticketDetails.priority === "haute" ? "#fed7aa" : ticketDetails.priority === "moyenne" ? "#ffc107" : ticketDetails.priority === "faible" ? "#fee2e2" : "#9e9e9e",
-                  color: ticketDetails.priority === "haute" ? "#92400e" : ticketDetails.priority === "faible" ? "#991b1b" : "white"
+                  background: ticketDetails.priority === "critique" ? "#f44336" : ticketDetails.priority === "haute" ? "#fed7aa" : ticketDetails.priority === "moyenne" ? "#E3F2FD" : ticketDetails.priority === "faible" ? "#fee2e2" : "#9e9e9e",
+                  color: ticketDetails.priority === "haute" ? "#92400e" : ticketDetails.priority === "faible" ? "#991b1b" : ticketDetails.priority === "moyenne" ? "#1565C0" : "white"
                 }}>
                   {ticketDetails.priority}
                 </span>

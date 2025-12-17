@@ -760,6 +760,10 @@ function UserDashboard({ token: tokenProp }: UserDashboardProps) {
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "sans-serif", background: "#f5f5f5" }}>
       {/* Sidebar */}
       <div style={{ 
+        position: "fixed",
+        top: 0,
+        left: 0,
+        height: "100vh",
         width: sidebarCollapsed ? "80px" : "250px", 
         background: "#1e293b", 
         color: "white", 
@@ -767,7 +771,9 @@ function UserDashboard({ token: tokenProp }: UserDashboardProps) {
         display: "flex",
         flexDirection: "column",
         gap: "20px",
-        transition: "width 0.3s ease"
+        transition: "width 0.3s ease",
+        overflowY: "auto",
+        zIndex: 100
       }}>
         {/* Gestion d'Incidents Section */}
         <div style={{ 
@@ -1034,15 +1040,28 @@ function UserDashboard({ token: tokenProp }: UserDashboardProps) {
       </div>
 
       {/* Main Content */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ 
+        flex: 1, 
+        display: "flex", 
+        flexDirection: "column", 
+        overflow: "hidden",
+        marginLeft: sidebarCollapsed ? "80px" : "250px",
+        transition: "margin-left 0.3s ease"
+      }}>
         {/* Barre de navigation en haut */}
         <div style={{
+          position: "fixed",
+          top: 0,
+          left: sidebarCollapsed ? "80px" : "250px",
+          right: 0,
           background: "#1e293b",
           padding: "16px 30px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          borderBottom: "1px solid rgba(59, 130, 246, 0.2)"
+          borderBottom: "1px solid rgba(59, 130, 246, 0.2)",
+          zIndex: 99,
+          transition: "left 0.3s ease"
         }}>
           {/* Left side - Empty to maintain top bar size */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -1163,7 +1182,7 @@ function UserDashboard({ token: tokenProp }: UserDashboardProps) {
         </div>
 
         {/* Contenu principal avec scroll */}
-        <div style={{ flex: 1, padding: "30px", overflow: "auto" }}>
+        <div style={{ flex: 1, padding: "30px", overflow: "auto", paddingTop: "80px" }}>
         {/* Section Tickets - Style GLPI - Visible seulement sur Dashboard */}
           {activeSection === "dashboard" && (
             <div style={{ 

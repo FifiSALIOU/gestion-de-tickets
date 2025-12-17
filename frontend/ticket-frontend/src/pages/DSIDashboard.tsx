@@ -230,7 +230,6 @@ function DSIDashboard({ token }: DSIDashboardProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [agencyFilter, setAgencyFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [showTicketsDropdown, setShowTicketsDropdown] = useState<boolean>(false);
   const [showReportsDropdown, setShowReportsDropdown] = useState<boolean>(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -1145,30 +1144,75 @@ function DSIDashboard({ token }: DSIDashboardProps) {
         // Ici on complète avec les métriques avancées
         try {
           if (allTickets.length > 0) {
-            // Calculer le temps moyen de résolution
+            // Calculer le temps moyen de résolution réel
             const resolvedTickets = allTickets.filter(t => t.status === "resolu" || t.status === "cloture");
             let totalResolutionTime = 0;
             let resolvedCount = 0;
             
-            resolvedTickets.forEach(ticket => {
-              // Si le ticket a une date de création, calculer la différence
-              if (ticket.created_at) {
-                const created = new Date(ticket.created_at);
-                const now = new Date();
-                const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
-                totalResolutionTime += diffDays;
-                resolvedCount++;
-              }
-            });
+            // Charger l'historique pour chaque ticket résolu pour obtenir la date de résolution
+            await Promise.all(
+              resolvedTickets.map(async (ticket) => {
+                if (!ticket.created_at) return;
+                
+                try {
+                  const historyRes = await fetch(`http://localhost:8000/tickets/${ticket.id}/history`, {
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                    },
+                  });
+                  
+                  if (historyRes.ok) {
+                    const history: TicketHistory[] = await historyRes.json();
+                    // Trouver la date de résolution (première occurrence de "resolu" ou "cloture")
+                    const resolutionHistory = history.find(
+                      h => h.new_status === "resolu" || h.new_status === "cloture"
+                    );
+                    
+                    if (resolutionHistory && resolutionHistory.changed_at) {
+                      const created = new Date(ticket.created_at);
+                      const resolved = new Date(resolutionHistory.changed_at);
+                      const diffDays = Math.floor((resolved.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+                      if (diffDays >= 0) {
+                        totalResolutionTime += diffDays;
+                        resolvedCount++;
+                      }
+                    } else if (ticket.created_at) {
+                      // Si pas d'historique, utiliser la date de création comme approximation
+                      const created = new Date(ticket.created_at);
+                      const now = new Date();
+                      const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+                      totalResolutionTime += diffDays;
+                      resolvedCount++;
+                    }
+                  }
+                } catch (err) {
+                  console.error(`Erreur historique ticket ${ticket.id}:`, err);
+                  // En cas d'erreur, utiliser la date de création
+                  if (ticket.created_at) {
+                    const created = new Date(ticket.created_at);
+                    const now = new Date();
+                    const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+                    totalResolutionTime += diffDays;
+                    resolvedCount++;
+                  }
+                }
+              })
+            );
             
             const avgResolutionDays = resolvedCount > 0 ? Math.round(totalResolutionTime / resolvedCount) : 0;
             
-            // Calculer la satisfaction implicite en pourcentage
-            const rejectedTickets = allTickets.filter(t => t.status === "rejete");
-            const resolvedCountPct = resolvedTickets.length;
-            const rejectedCountPct = rejectedTickets.length;
-            const denomPct = resolvedCountPct + rejectedCountPct;
-            const satisfactionPct = denomPct > 0 ? ((resolvedCountPct / denomPct) * 100).toFixed(1) : "0";
+            // Calculer la satisfaction client réelle basée sur feedback_score
+            const ticketsWithFeedback = allTickets.filter(
+              t => t.feedback_score !== null && t.feedback_score !== undefined && t.feedback_score > 0
+            );
+            
+            let satisfactionPct = "0";
+            if (ticketsWithFeedback.length > 0) {
+              // Le feedback_score est probablement sur 5, convertir en pourcentage
+              const avgFeedback = ticketsWithFeedback.reduce((sum, t) => sum + (t.feedback_score || 0), 0) / ticketsWithFeedback.length;
+              // Convertir en pourcentage (si sur 5, multiplier par 20; si déjà sur 100, garder tel quel)
+              satisfactionPct = (avgFeedback <= 5 ? (avgFeedback / 5 * 100) : avgFeedback).toFixed(1);
+            }
             
             // Mettre à jour les métriques (en conservant openTickets déjà calculé)
             setMetrics(prev => ({
@@ -1624,9 +1668,12 @@ function DSIDashboard({ token }: DSIDashboardProps) {
   const pendingCount = pendingTickets.length;
   const assignedCount = assignedTickets.length;
   const resolvedCount = resolvedTickets.length;
+  const closedCount = closedTickets.length;
   const totalTicketsCount = allTickets.length;
+  // Taux de résolution = (résolu + clôturé) / total
+  const resolvedOrClosedCount = resolvedCount + closedCount;
   const resolutionRate =
-    totalTicketsCount > 0 ? `${Math.round((resolvedCount / totalTicketsCount) * 100)}%` : "0%";
+    totalTicketsCount > 0 ? `${Math.round((resolvedOrClosedCount / totalTicketsCount) * 100)}%` : "0%";
 
   // Statistiques agrégées pour la section Techniciens
   const activeTechniciansCount = technicians.filter((tech) => {
@@ -1647,6 +1694,16 @@ function DSIDashboard({ token }: DSIDashboardProps) {
             (sum, t) => sum + (t.feedback_score || 0),
             0
           ) / ticketsWithFeedbackGlobal.length
+        ).toFixed(1)
+      : "0.0";
+  
+  // Calculer la satisfaction moyenne en pourcentage (sur 5)
+  const averageSatisfactionPercentage =
+    ticketsWithFeedbackGlobal.length > 0
+      ? (
+          (parseFloat(averageSatisfactionScore) <= 5 
+            ? (parseFloat(averageSatisfactionScore) / 5 * 100) 
+            : parseFloat(averageSatisfactionScore))
         ).toFixed(1)
       : "0.0";
 
@@ -1921,8 +1978,23 @@ function DSIDashboard({ token }: DSIDashboardProps) {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "sans-serif", background: "#f5f5f5" }}>
+      <style>{`
+        #dsi-sidebar::-webkit-scrollbar {
+          display: none;
+        }
+        #dsi-sidebar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
       {/* Sidebar */}
-      <div style={{ 
+      <div 
+        id="dsi-sidebar"
+        style={{ 
+        position: "fixed",
+        top: 0,
+        left: 0,
+        height: "100vh",
         width: sidebarCollapsed ? "80px" : "250px", 
         background: "#1e293b", 
         color: "white", 
@@ -1930,7 +2002,9 @@ function DSIDashboard({ token }: DSIDashboardProps) {
         display: "flex",
         flexDirection: "column",
         gap: "20px",
-        transition: "width 0.3s ease"
+        transition: "width 0.3s ease",
+        overflowY: "auto",
+        zIndex: 100
       }}>
         <div style={{ 
           display: "flex", 
@@ -2018,133 +2092,32 @@ function DSIDashboard({ token }: DSIDashboardProps) {
           </div>
           <div>Tableau de Bord</div>
         </div>
-        <div style={{ position: "relative" }}>
-          <div 
-            onClick={() => setShowTicketsDropdown(!showTicketsDropdown)}
-            style={{ 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "12px", 
-              padding: "12px", 
-              background: activeSection === "tickets" ? "rgba(255,255,255,0.1)" : "transparent",
-              borderRadius: "8px",
-              cursor: "pointer"
-            }}
-          >
-            <div style={{ width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <line x1="9" y1="3" x2="9" y2="21" />
-                <line x1="8" y1="8" x2="18" y2="8" />
-                <line x1="8" y1="12" x2="18" y2="12" />
-                <line x1="8" y1="16" x2="18" y2="16" />
-              </svg>
-            </div>
-            <div style={{ flex: 1 }}>Tickets</div>
-            <div style={{ width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                {showTicketsDropdown ? (
-                  <polyline points="6 9 12 15 18 9" />
-                ) : (
-                  <polyline points="9 18 15 12 9 6" />
-                )}
-              </svg>
-            </div>
+        <div 
+          onClick={() => {
+            setStatusFilter("all");
+            setActiveSection("tickets");
+          }}
+          style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            gap: "12px", 
+            padding: "12px 16px", 
+            cursor: "pointer",
+            color: "white",
+            borderRadius: "4px",
+            background: activeSection === "tickets" ? "rgba(255,255,255,0.1)" : "transparent"
+          }}
+        >
+          <div style={{ width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+              <line x1="8" y1="8" x2="18" y2="8" />
+              <line x1="8" y1="12" x2="18" y2="12" />
+              <line x1="8" y1="16" x2="18" y2="16" />
+            </svg>
           </div>
-          {showTicketsDropdown && (
-            <div style={{ 
-              marginLeft: "36px", 
-              marginTop: "8px", 
-              display: "flex", 
-              flexDirection: "column", 
-              gap: "4px" 
-            }}>
-              <div 
-                onClick={() => {
-                  setStatusFilter("all");
-                  setActiveSection("tickets");
-                }}
-                style={{ 
-                  padding: "8px 12px", 
-                  borderRadius: "4px", 
-                  cursor: "pointer",
-                  background: statusFilter === "all" ? "rgba(255,255,255,0.1)" : "transparent"
-                }}
-              >
-                Tous les tickets
-              </div>
-              <div 
-                onClick={() => {
-                  setStatusFilter("en_attente_analyse");
-                  setActiveSection("tickets");
-                }}
-                style={{ 
-                  padding: "8px 12px", 
-                  borderRadius: "4px", 
-                  cursor: "pointer",
-                  background: statusFilter === "en_attente_analyse" ? "rgba(255,255,255,0.1)" : "transparent"
-                }}
-              >
-                En attente
-              </div>
-              <div 
-                onClick={() => {
-                  setStatusFilter("en_traitement");
-                  setActiveSection("tickets");
-                }}
-                style={{ 
-                  padding: "8px 12px", 
-                  borderRadius: "4px", 
-                  cursor: "pointer",
-                  background: statusFilter === "en_traitement" ? "rgba(255,255,255,0.1)" : "transparent"
-                }}
-              >
-                En traitement
-              </div>
-              <div 
-                onClick={() => {
-                  setStatusFilter("resolu");
-                  setActiveSection("tickets");
-                }}
-                style={{ 
-                  padding: "8px 12px", 
-                  borderRadius: "4px", 
-                  cursor: "pointer",
-                  background: statusFilter === "resolu" ? "rgba(255,255,255,0.1)" : "transparent"
-                }}
-              >
-                Résolus
-              </div>
-              <div 
-                onClick={() => {
-                  setStatusFilter("cloture");
-                  setActiveSection("tickets");
-                }}
-                style={{ 
-                  padding: "8px 12px", 
-                  borderRadius: "4px", 
-                  cursor: "pointer",
-                  background: statusFilter === "cloture" ? "rgba(255,255,255,0.1)" : "transparent"
-                }}
-              >
-                Clôturés
-              </div>
-              <div 
-                onClick={() => {
-                  setStatusFilter("rejete");
-                  setActiveSection("tickets");
-                }}
-                style={{ 
-                  padding: "8px 12px", 
-                  borderRadius: "4px", 
-                  cursor: "pointer",
-                  background: statusFilter === "rejete" ? "rgba(255,255,255,0.1)" : "transparent"
-                }}
-              >
-                Rejetés
-              </div>
-            </div>
-          )}
+          <div>Tickets</div>
         </div>
         {userRole !== "Admin" && (
           <div 
@@ -2570,16 +2543,29 @@ function DSIDashboard({ token }: DSIDashboardProps) {
       </div>
 
       {/* Main Content */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ 
+        flex: 1, 
+        display: "flex", 
+        flexDirection: "column", 
+        overflow: "hidden",
+        marginLeft: sidebarCollapsed ? "80px" : "250px",
+        transition: "margin-left 0.3s ease"
+      }}>
         {/* Barre de navigation en haut */}
         <div style={{
+          position: "fixed",
+          top: 0,
+          left: sidebarCollapsed ? "80px" : "250px",
+          right: 0,
           background: "#1e293b",
           padding: "16px 30px",
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-end",
           gap: "20px",
-          borderBottom: "1px solid #0f172a"
+          borderBottom: "1px solid #0f172a",
+          zIndex: 99,
+          transition: "left 0.3s ease"
         }}>
           {/* Welcome message */}
           {userInfo && (
@@ -2686,7 +2672,7 @@ function DSIDashboard({ token }: DSIDashboardProps) {
         </div>
 
         {/* Contenu principal avec scroll */}
-        <div style={{ flex: 1, padding: "30px", overflow: "auto" }}>
+        <div style={{ flex: 1, padding: "30px", overflow: "auto", paddingTop: "80px" }}>
           {activeSection === "dashboard" && (
             <>
       {/* En-tête centre d'assignation */}
@@ -2703,7 +2689,7 @@ function DSIDashboard({ token }: DSIDashboardProps) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(7, minmax(130px, 1fr))",
+          gridTemplateColumns: "repeat(6, minmax(130px, 1fr))",
           gap: "10px",
           margin: "20px 0",
         }}
@@ -2795,47 +2781,6 @@ function DSIDashboard({ token }: DSIDashboardProps) {
           </div>
           <div style={{ marginTop: "2px", fontSize: "10px", color: "#6b7280" }}>
             Sur {technicians.length || 0} au total
-          </div>
-        </div>
-
-        {/* Tickets en traitement */}
-        <div
-          style={{
-            background: "white",
-            borderRadius: "12px",
-            padding: "10px 12px",
-            boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
-          }}
-        >
-          <div
-            style={{
-              width: "36px",
-              height: "36px",
-              borderRadius: "10px",
-              background: "#e5f0ff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: "8px",
-            }}
-          >
-            <Users size={18} color="#2563eb" />
-          </div>
-          <div
-            style={{
-              fontSize: "20px",
-              fontWeight: 700,
-              color: "#111827",
-              marginBottom: "3px",
-            }}
-          >
-            {assignedCount}
-          </div>
-          <div style={{ fontSize: "11px", fontWeight: 500, color: "#374151" }}>
-            Tickets en traitement
-          </div>
-          <div style={{ marginTop: "2px", fontSize: "10px", color: "#6b7280" }}>
-            Par l&apos;équipe
           </div>
         </div>
 
@@ -5604,7 +5549,7 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                         color: "#0f172a",
                       }}
                     >
-                      {metrics.userSatisfaction}
+                      {resolutionRate}
                     </div>
                     <div style={{ fontSize: "14px", color: "#6b7280" }}>
                       Taux de résolution
@@ -5645,7 +5590,7 @@ function DSIDashboard({ token }: DSIDashboardProps) {
                         color: "#0f172a",
                       }}
                     >
-                      {averageSatisfactionScore}
+                      {averageSatisfactionPercentage}%
                     </div>
                     <div style={{ fontSize: "14px", color: "#6b7280" }}>
                       Satisfaction moyenne
